@@ -1,0 +1,411 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8" />
+  <title>Flip 7 Advisor</title>
+
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <style>
+    body {
+      font-family: Arial;
+      background: #111;
+      color: white;
+      margin: 0;
+      padding: 20px;
+    }
+
+    h1 {
+      text-align: center;
+    }
+
+    .section {
+      margin-top: 25px;
+    }
+
+    .cards {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 10px;
+      margin-top: 10px;
+    }
+
+    button {
+      padding: 15px;
+      font-size: 18px;
+      border: none;
+      border-radius: 10px;
+      background: #222;
+      color: white;
+      cursor: pointer;
+    }
+
+    button:hover {
+      background: #444;
+    }
+
+    .display {
+      min-height: 40px;
+      background: #222;
+      padding: 10px;
+      border-radius: 10px;
+      margin-top: 10px;
+      font-size: 18px;
+    }
+
+    .result {
+      margin-top: 20px;
+      padding: 15px;
+      border-radius: 10px;
+      text-align: center;
+      font-size: 24px;
+      font-weight: bold;
+    }
+
+    .hit {
+      background: green;
+    }
+
+    .stay {
+      background: darkred;
+    }
+
+    .stats {
+      margin-top: 15px;
+      background: #222;
+      padding: 15px;
+      border-radius: 10px;
+    }
+
+    .top-buttons {
+      display: flex;
+      gap: 10px;
+      margin-top: 10px;
+    }
+
+  </style>
+</head>
+
+<body>
+
+<h1>🃏 Flip 7 Advisor</h1>
+
+<div class="section">
+  <h2>Your Cards</h2>
+
+  <div class="display" id="myCards"></div>
+
+  <div class="cards" id="myButtons"></div>
+
+  <div class="top-buttons">
+    <button onclick="undoMy()">Undo</button>
+  </div>
+</div>
+
+<div class="section">
+  <h2>Visible Used Cards</h2>
+
+  <div class="display" id="usedCards"></div>
+
+  <div class="cards" id="usedButtons"></div>
+
+  <div class="top-buttons">
+    <button onclick="undoUsed()">Undo</button>
+  </div>
+</div>
+
+<div class="section">
+  <label>
+    <input type="checkbox" id="secondChance">
+    I Have Second Chance
+  </label>
+</div>
+
+<div class="section">
+  <label>Risk Mode:</label>
+
+  <select id="riskMode">
+    <option>Conservative</option>
+    <option selected>Normal</option>
+    <option>Aggressive</option>
+  </select>
+</div>
+
+<div id="result" class="result"></div>
+
+<div class="stats" id="stats"></div>
+
+<div class="section">
+  <button onclick="resetAll()">Reset Round</button>
+</div>
+
+<script>
+
+const numberCounts = {
+  0:1,1:1,2:2,3:3,4:4,5:5,6:6,
+  7:7,8:8,9:9,10:10,11:11,12:12
+};
+
+const specialCounts = {
+  "+2":1,
+  "+4":1,
+  "+6":1,
+  "+8":1,
+  "+10":1,
+  "x2":1,
+  "Second Chance":3,
+  "Freeze":3,
+  "Flip Three":3
+};
+
+const allCards = [
+  "0","1","2","3","4","5","6",
+  "7","8","9","10","11","12",
+  "+2","+4","+6","+8","+10",
+  "x2",
+  "Second Chance",
+  "Freeze",
+  "Flip Three"
+];
+
+let myCards = [];
+let usedCards = [];
+
+function renderButtons() {
+
+  const my = document.getElementById("myButtons");
+  const used = document.getElementById("usedButtons");
+
+  my.innerHTML = "";
+  used.innerHTML = "";
+
+  allCards.forEach(card => {
+
+    const btn1 = document.createElement("button");
+    btn1.innerText = card;
+    btn1.onclick = () => {
+      myCards.push(card);
+      update();
+    };
+
+    my.appendChild(btn1);
+
+    const btn2 = document.createElement("button");
+    btn2.innerText = card;
+    btn2.onclick = () => {
+      usedCards.push(card);
+      update();
+    };
+
+    used.appendChild(btn2);
+
+  });
+}
+
+function score(cards) {
+
+  let numbers = [];
+  let bonus = 0;
+  let multiplier = 1;
+
+  cards.forEach(card => {
+
+    if (!isNaN(card)) {
+      numbers.push(Number(card));
+    }
+
+    if (card.startsWith("+")) {
+      bonus += Number(card.replace("+",""));
+    }
+
+    if (card === "x2") {
+      multiplier *= 2;
+    }
+
+  });
+
+  let total =
+    numbers.reduce((a,b)=>a+b,0);
+
+  total = total * multiplier + bonus;
+
+  if (new Set(numbers).size >= 7) {
+    total += 15;
+  }
+
+  return total;
+}
+
+function evaluate() {
+
+  let deck = {};
+
+  Object.entries(numberCounts).forEach(([k,v])=>{
+    deck[k] = v;
+  });
+
+  Object.entries(specialCounts).forEach(([k,v])=>{
+    deck[k] = v;
+  });
+
+  [...myCards, ...usedCards].forEach(card => {
+    if (deck[card] > 0) {
+      deck[card]--;
+    }
+  });
+
+  if (
+    document.getElementById("secondChance").checked &&
+    deck["Second Chance"] > 0
+  ) {
+    deck["Second Chance"]--;
+  }
+
+  let totalCards = 0;
+
+  Object.values(deck).forEach(v=>{
+    totalCards += v;
+  });
+
+  const currentScore = score(myCards);
+
+  let myNumbers = myCards
+    .filter(c => !isNaN(c))
+    .map(Number);
+
+  let busts = 0;
+  let expected = 0;
+
+  Object.entries(deck).forEach(([card,count]) => {
+
+    if (count <= 0) return;
+
+    const prob = count / totalCards;
+
+    let outcome = currentScore;
+
+    if (!isNaN(card)) {
+
+      const num = Number(card);
+
+      if (myNumbers.includes(num)) {
+
+        if (
+          document
+            .getElementById("secondChance")
+            .checked
+        ) {
+          outcome = currentScore;
+        } else {
+          outcome = 0;
+          busts += count;
+        }
+
+      } else {
+
+        outcome =
+          score([...myCards, card]);
+
+      }
+
+    }
+
+    if (
+      card.startsWith("+") ||
+      card === "x2"
+    ) {
+      outcome =
+        score([...myCards, card]);
+    }
+
+    expected += outcome * prob;
+
+  });
+
+  const risk =
+    document.getElementById("riskMode").value;
+
+  if (risk === "Conservative") {
+    expected *= 0.9;
+  }
+
+  if (risk === "Aggressive") {
+    expected *= 1.1;
+  }
+
+  const recommendation =
+    expected > currentScore
+      ? "HIT"
+      : "STAY";
+
+  return {
+    recommendation,
+    currentScore,
+    expected: expected.toFixed(2),
+    bust:
+      ((busts / totalCards) * 100)
+      .toFixed(1)
+  };
+}
+
+function update() {
+
+  document.getElementById(
+    "myCards"
+  ).innerText = myCards.join(" ");
+
+  document.getElementById(
+    "usedCards"
+  ).innerText = usedCards.join(" ");
+
+  const result = evaluate();
+
+  const resultDiv =
+    document.getElementById("result");
+
+  resultDiv.innerText =
+    result.recommendation;
+
+  resultDiv.className =
+    "result " +
+    (
+      result.recommendation === "HIT"
+        ? "hit"
+        : "stay"
+    );
+
+  document.getElementById(
+    "stats"
+  ).innerHTML = `
+    Current Score: ${result.currentScore}<br>
+    Expected Value If Hit: ${result.expected}<br>
+    Bust Chance: ${result.bust}%
+  `;
+}
+
+function undoMy() {
+  myCards.pop();
+  update();
+}
+
+function undoUsed() {
+  usedCards.pop();
+  update();
+}
+
+function resetAll() {
+  myCards = [];
+  usedCards = [];
+  document.getElementById(
+    "secondChance"
+  ).checked = false;
+  update();
+}
+
+renderButtons();
+update();
+
+</script>
+
+</body>
+</html>
