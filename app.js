@@ -234,7 +234,7 @@ function actionOwnerHandPreview(owner){
   const p = players[owner];
   if(!p) return "";
 
-  const cards = p.hand.length
+  const cards = p.hand && p.hand.length
     ? p.hand.map(c=>cardImageHtml(c,false,true)).join("")
     : '<span class="small">No cards</span>';
 
@@ -1577,13 +1577,13 @@ function openAction(card, owner){
 
   title.innerText=`${players[owner].name}'s Action: ${card}`;
   body.innerHTML="";
+  body.innerHTML += actionOwnerHandPreview(owner);
 
   if(actionNeedsTarget(card) && validActionTargets(card, owner).length === 0){
     autoDiscardUnplayableAction(card, owner, `no valid target for ${card}`);
     return;
   }
 
-  body.innerHTML += actionOwnerHandPreview(owner);
 
   if(card==="Freeze"){
     players[owner].stayed=true;
@@ -1779,7 +1779,7 @@ function multiDraw(target, n){
 function chooseCard(kind,target){
   const body=document.getElementById("actionBody");
 
-  body.innerHTML=`<p>Choose a card from ${players[target].name}. Action cards are not valid targets.</p><div class="action-card-choice-grid">`;
+  body.innerHTML=actionOwnerHandPreview(pending.owner) + `<p>Choose a card from ${players[target].name}. Action cards are not valid targets.</p><div class="action-card-choice-grid">`;
 
   players[target].hand.forEach((card,idx)=>{
     if(!isPlayableCardTarget(card)) return;
@@ -1829,7 +1829,7 @@ function chooseSwapMine(target){
 
   const body=document.getElementById("actionBody");
 
-  body.innerHTML=`<p>Choose ${players[pending.owner].name}'s card to swap.</p><div class="action-card-choice-grid">`;
+  body.innerHTML=actionOwnerHandPreview(pending.owner) + `<p>Choose ${players[pending.owner].name}'s card to swap.</p><div class="action-card-choice-grid">`;
 
   players[pending.owner].hand.forEach((card,idx)=>{
     if(!isPlayableCardTarget(card)) return;
@@ -1844,7 +1844,7 @@ function chooseSwapTheirs(myIdx){
   const target=swapTemp.target;
   const body=document.getElementById("actionBody");
 
-  body.innerHTML=`<p>Choose ${players[target].name}'s card.</p><div class="action-card-choice-grid">`;
+  body.innerHTML=actionOwnerHandPreview(pending.owner) + `<p>Choose ${players[target].name}'s card.</p><div class="action-card-choice-grid">`;
 
   players[target].hand.forEach((card,idx)=>{
     if(!isPlayableCardTarget(card)) return;

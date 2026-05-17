@@ -1,9 +1,22 @@
+console.log("mcts-worker removeOne fix loaded");
 /* mcts-worker.js
    True on-device Monte Carlo Tree Search / rollout engine for Flip 7.
    Runs in a Web Worker so the UI stays responsive.
 */
 
 let currentJobId = 0;
+
+function removeOne(hand, card){
+  if(!Array.isArray(hand)) return false;
+  const idx = hand.indexOf(card);
+  if(idx >= 0){
+    hand.splice(idx, 1);
+    return true;
+  }
+  return false;
+}
+
+
 
 self.onmessage = event => {
   const msg = event.data;
@@ -414,15 +427,6 @@ function resolveActionApprox(sim, deck, owner, card){
 }
 
 
-function removeOne(hand, card){
-  if(!Array.isArray(hand)) return false;
-  const idx = hand.indexOf(card);
-  if(idx >= 0){
-    hand.splice(idx, 1);
-    return true;
-  }
-  return false;
-}
 
 function chooseHighestHand(list){
   if(!list.length) return null;
