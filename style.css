@@ -815,3 +815,13 @@
 .action-card-choice-grid .choice br {
   display: none !important;
 }
+
+#gameOverBody {
+  font-size: 16px;
+  line-height: 1.5;
+}
+#gameOverBody hr {
+  border: 0;
+  border-top: 1px solid var(--border);
+  margin: 12px 0;
+}

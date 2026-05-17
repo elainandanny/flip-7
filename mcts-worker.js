@@ -106,7 +106,9 @@ function analyzeMCTS(state, options, jobId){
     stayWinChance: stayWin * 100,
     hitBustChance: hitBust * 100,
     confidence: Math.min(99, Math.round(Math.abs(hitScore - stayScore) / 4)),
-    reason: buildReason(bestMove, hitValue, stayValue, hitWin, stayWin, hitBust, sims)
+    reason: buildReason(bestMove, hitValue, stayValue, hitWin, stayWin, hitBust, sims),
+    bothWinZero: hitWin === 0 && stayWin === 0,
+    valueGap: Math.abs(hitValue - stayValue)
   };
 }
 
@@ -122,9 +124,20 @@ function updateNode(node, utility, win, bust){
 }
 
 function buildReason(bestMove, hitValue, stayValue, hitWin, stayWin, hitBust, sims){
+  const bothWinZero = hitWin === 0 && stayWin === 0;
+  const diff = Math.abs(hitValue - stayValue).toFixed(1);
+
+  if(bothWinZero){
+    if(bestMove === "HIT"){
+      return `True MCTS recommends HIT after ${sims} futures because it improves expected position by about ${diff} points. Direct win chance is still 0% because nobody is close enough to the target score yet.`;
+    }
+    return `True MCTS recommends STAY after ${sims} futures because it protects about ${diff} points of expected position. Direct win chance is still 0% because nobody is close enough to the target score yet.`;
+  }
+
   if(bestMove === "HIT"){
     return `True MCTS recommends HIT after ${sims} futures. HIT win chance ${pct(hitWin)} beats STAY win chance ${pct(stayWin)}. Bust on hit was ${pct(hitBust)}.`;
   }
+
   return `True MCTS recommends STAY after ${sims} futures. STAY win chance ${pct(stayWin)} beats HIT win chance ${pct(hitWin)}.`;
 }
 
