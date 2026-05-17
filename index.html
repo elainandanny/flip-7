@@ -1,639 +1,71 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <title>Flip 7 Game Advisor</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <style>
-    :root {
-      --bg:#101114; --panel:#1d1f25; --muted:#a9afbd; --text:#fff;
-      --green:#087a28; --red:#a11224; --yellow:#f2c94c; --blue:#0b5cad;
-      --border:#333844;
-    }
-    * { box-sizing: border-box; }
-    body { font-family: Arial, sans-serif; background: var(--bg); color: var(--text); margin:0; padding:14px; }
-    h1,h2,h3 { margin: 10px 0; }
-    .small { color: var(--muted); font-size: 14px; line-height: 1.4; }
-    .section, .player-card, .panel { background: var(--panel); border-radius: 14px; padding: 12px; margin-top: 14px; }
-    select, input, button { border:0; border-radius: 10px; padding: 12px; font-size:16px; }
-    select, input { width:100%; background:#292c35; color:white; }
-    button { background:#2b2f3a; color:white; cursor:pointer; font-weight:700; }
-    button:active { transform: scale(.98); }
-    .row { display:flex; gap:10px; align-items:center; margin-top:10px; }
-    .row > * { flex:1; }
-    .cards { display:grid; grid-template-columns: repeat(4,1fr); gap:8px; margin-top:10px; }
-    .card-btn { min-height:62px; white-space:pre-line; border:2px solid var(--border); }
-    .full { background:white; color:black; }
-    .none { background:black; color:white; border-color:#555; }
-    .low { background:var(--red); color:white; }
-    .medium { background:var(--yellow); color:black; }
-    .high { background:var(--green); color:white; }
-    .active { outline:3px solid var(--yellow); }
-    .stayed { opacity:.75; border:2px solid var(--green); }
-    .busted { opacity:.65; border:2px solid var(--red); }
-    .result { text-align:center; font-size:30px; font-weight:900; padding:16px; border-radius:14px; margin-top:14px; }
-    .hit { background:var(--green); }
-    .stay { background:var(--red); }
-    .blue { background:var(--blue)!important; }
-    .danger { background:var(--red)!important; }
-    .green { background:var(--green)!important; }
-    .yellow { background:var(--yellow)!important; color:black!important; }
-    .display { background:#111319; border:1px solid var(--border); border-radius:10px; padding:10px; min-height:40px; line-height:1.5; }
-    .players { display:grid; grid-template-columns: 1fr; gap:10px; margin-top:10px; }
-    .pill { display:inline-block; padding:4px 8px; border-radius:999px; background:#303542; margin:2px; }
-    .modal { position:fixed; inset:0; background:rgba(0,0,0,.75); display:none; align-items:center; justify-content:center; padding:14px; z-index:99; }
-    .modal-content { background:#1d1f25; max-width:720px; width:100%; max-height:90vh; overflow:auto; border-radius:14px; padding:14px; border:1px solid #444; }
-    .hidden { display:none; }
-    .stat-grid { display:grid; grid-template-columns: repeat(2,1fr); gap:8px; }
-    .stat { background:#111319; border:1px solid var(--border); border-radius:10px; padding:10px; }
-    @media (min-width: 760px) { .players { grid-template-columns: repeat(2,1fr); } .cards { grid-template-columns: repeat(6,1fr); } }
-  </style>
+<meta charset="UTF-8" />
+<title>Flip 7 Game Advisor</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
+<style>
+:root{--bg:#101114;--panel:#1b1f27;--text:#fff;--muted:#b8bfcc;--border:#3a4050;--green:#138a35;--red:#bc2634;--yellow:#f2c94c;--blue:#1f5fbf;--purple:#a56eff}
+*{box-sizing:border-box}body{margin:0;background:radial-gradient(circle at top,#202734,#101114 55%);color:var(--text);font-family:Arial,sans-serif;padding:10px}h1,h2,h3{margin:8px 0}h1{font-size:24px}h2{font-size:18px}.small{font-size:13px;color:var(--muted);line-height:1.35}.app{display:grid;grid-template-columns:1fr;gap:12px;max-width:1180px;margin:auto}.panel,.player,.setup-card{background:linear-gradient(145deg,#1d222c,#151922);border:1px solid var(--border);border-radius:14px;padding:12px;box-shadow:0 8px 20px rgba(0,0,0,.25)}.hidden{display:none!important}label{display:block;font-size:13px;color:var(--muted);margin:8px 0 5px}input,select,button,textarea{width:100%;border:0;border-radius:10px;padding:12px;font-size:16px}input,select,textarea{background:#2a303d;color:white;border:1px solid var(--border)}button{background:#2c3342;color:white;font-weight:800;cursor:pointer}button:active{transform:scale(.98)}.row{display:flex;gap:8px;margin-top:8px}.row>*{flex:1}.green{background:var(--green)!important}.red{background:var(--red)!important}.blue{background:var(--blue)!important}.yellow{background:var(--yellow)!important;color:#111!important}.players{display:grid;grid-template-columns:1fr;gap:8px}.player.active{outline:3px solid var(--purple)}.player.stayed{border-color:var(--green)}.player.busted{border-color:var(--red);opacity:.78}.player-head{display:flex;justify-content:space-between;gap:8px;align-items:center}.badge{display:inline-block;border-radius:999px;padding:3px 8px;font-size:12px;background:#303747}.cards-in-front{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}.mini-card{min-width:48px;min-height:60px;background:#f8f8f8;color:#111;border-radius:8px;display:flex;align-items:center;justify-content:center;font-weight:900;font-size:22px;position:relative;border:1px solid #bbb}.mini-card.neg{color:red}.mini-card.black{background:#000;color:#fff;border-color:#555}.mini-card.down{background:#0a0a0a;color:#777}.current-turn{font-size:20px;font-weight:900;color:#d8c2ff}.scoreline{font-size:14px;color:#dfe5f4;line-height:1.55}.result{font-size:30px;text-align:center;border-radius:14px;padding:14px;font-weight:900;margin-top:8px}.result.hit{background:var(--green)}.result.stay{background:var(--red)}.stats{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px}.stat{background:#121620;border:1px solid var(--border);border-radius:10px;padding:9px;font-size:13px;color:var(--muted)}.stat b{display:block;font-size:18px;color:white;margin-top:3px}.card-grid,.deck-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:7px;margin-top:8px}.card-btn{min-height:68px;border:2px solid var(--border);font-weight:900;position:relative;overflow:hidden;padding:8px}.card-name{font-size:22px;line-height:1.05;display:block;text-align:center}.card-count{position:absolute;right:7px;bottom:5px;font-size:12px;opacity:.9}.card-full{background:white;color:#111}.card-none{background:#000;color:#fff;border-color:#555}.card-low{background:var(--red);color:#fff}.card-med{background:var(--yellow);color:#111}.card-high{background:var(--green);color:#fff}.display{background:#111620;border:1px solid var(--border);border-radius:10px;padding:9px}.log{max-height:220px;overflow:auto;background:#111620;border:1px solid var(--border);border-radius:10px;padding:9px;font-size:13px;line-height:1.45}.log p{margin:0 0 5px}.modal{display:none;position:fixed;inset:0;background:rgba(0,0,0,.78);z-index:50;align-items:center;justify-content:center;padding:12px}.modal-content{background:#1b1f27;border:1px solid var(--border);border-radius:14px;padding:12px;width:min(760px,100%);max-height:92vh;overflow:auto}.choice{background:#2a303d;text-align:left;margin-top:8px}.rules li{margin-bottom:7px}@media(min-width:760px){body{padding:16px}.app{grid-template-columns:300px 1fr 360px}.main{grid-column:2}.left{grid-column:1;grid-row:1/span 3}.right{grid-column:3;grid-row:1/span 3}.card-grid,.deck-grid{grid-template-columns:repeat(4,1fr)}}@media(max-width:480px){.card-name{font-size:18px}.card-btn{min-height:60px}.row{flex-direction:column}.stats{grid-template-columns:1fr}body{padding:8px}}
+</style>
 </head>
 <body>
-<h1>🃏 Flip 7 Game Advisor</h1>
-<div class="small">Turn-based tracker for Original Flip 7 and Flip 7: With a Vengeance. Pick players, flip through turns, enter drawn cards, resolve actions, and see hit/stay odds.</div>
-
-<div class="section">
-  <h2>Setup</h2>
-  <label>Game version</label>
-  <select id="gameVersion" onchange="newGame()">
-    <option value="classic">Original Flip 7</option>
-    <option value="vengeance">Flip 7: With a Vengeance</option>
-  </select>
-
-  <div class="row">
-    <div>
-      <label>Players</label>
-      <input id="playerCount" type="number" min="1" max="10" value="3" />
-    </div>
-    <button class="blue" onclick="newGame()">Start / Reset Game</button>
-  </div>
+<div class="app">
+<div class="left">
+<div id="setupCard" class="setup-card">
+<h1>🃏 Flip 7</h1><div class="small">Setup the game. After starting, this setup card hides for mobile play.</div>
+<label>Game version</label><select id="gameVersion"><option value="classic">Original Flip 7</option><option value="vengeance" selected>Flip 7: With a Vengeance</option></select>
+<label>Mode</label><select id="playMode" onchange="update()"><option value="tracker">Real-life advisor / tracker - I enter drawn cards</option><option value="digital">Play in app - draw random cards</option></select>
+<label>Show odds/advice in digital play?</label><select id="showAdviceDigital"><option value="yes" selected>Show odds and advice</option><option value="no">Hide odds and advice</option></select>
+<label>Number of players</label><input id="playerCount" type="number" min="1" max="10" value="4" />
+<label>Player names, one per line</label><textarea id="playerNames" style="min-height:110px">Alice
+Bob
+Catherine
+David</textarea>
+<div class="row"><button class="green" onclick="startGame()">Start Game</button></div>
 </div>
-
-<div class="section">
-  <h2>Current Turn</h2>
-  <div id="turnInfo" class="display"></div>
-  <div id="advice" class="result"></div>
-  <div id="odds" class="stat-grid"></div>
-
-  <div class="row">
-    <button class="green" onclick="openDrawModal('self', activePlayerIndex)">HIT / Enter Card</button>
-    <button class="yellow" onclick="stayActive()">STAY</button>
-  </div>
-  <div class="row">
-    <button onclick="nextTurn()">Skip to Next Active Player</button>
-    <button class="danger" onclick="endRound()">End Round / Score</button>
-  </div>
+<div id="gameMenu" class="panel hidden"><h2>Menu</h2><button onclick="showSetup()">Show Setup / New Game</button><div class="row"><button class="blue" onclick="shuffleDiscardBack()">Shuffle Discard Into Deck</button></div><div class="small" style="margin-top:10px">Stayed players can still be targeted. Busted players are out; their cards stay face down and are not discarded until round end.</div></div>
+<div class="panel rules"><h2>Official Play Notes</h2><ul class="small"><li>On your turn, choose HIT or STAY.</li><li>Staying does not protect cards; actions can still target you.</li><li>If you bust, you are out immediately and score 0 for the round.</li><li>Busted cards stay face down in front of the player and out of play.</li><li>Cards in front of players, including busted cards, are not discarded until round end.</li><li>If the deck runs out mid-round, shuffle only the discard pile back into the deck.</li></ul></div>
 </div>
-
-<div class="section">
-  <h2>Players</h2>
-  <div id="players" class="players"></div>
+<div class="main">
+<div class="panel"><div class="current-turn" id="turnTitle">Start a game</div><div class="scoreline" id="turnDetails"></div><div id="adviceBox"></div><div id="oddsBox" class="stats"></div><div class="row"><button class="green" onclick="hitActive()">HIT</button><button class="red" onclick="stayActive()">STAY</button></div><div class="row"><button onclick="nextTurn()">Next Active Player</button><button class="blue" onclick="endRound()">End Round</button></div></div>
+<div class="panel" id="manualEntryPanel"><h2>Enter Drawn Card</h2><div class="small">Tap the card the active player received. Count is shown bottom-right.</div><div id="drawGrid" class="card-grid"></div></div>
+<div class="panel"><h2>Players</h2><div id="playersGrid" class="players"></div></div>
 </div>
-
-<div class="section">
-  <h2>Discard + Deck</h2>
-  <div class="row">
-    <button onclick="resetRoundOnly()">Reset Round → Move Round Cards to Discard</button>
-    <button class="blue" onclick="shuffleDiscardBack()">Shuffle Discard Back Into Deck</button>
-  </div>
-  <h3>Discard Pile</h3>
-  <div id="discardPile" class="display"></div>
-  <h3>Cards Left in Deck</h3>
-  <div id="deckList" class="display"></div>
+<div class="right"><div class="panel"><h2>Cards Remaining in Deck</h2><div id="deckGrid" class="deck-grid"></div><div class="small" style="margin-top:10px">White full · Green high · Yellow medium · Red low · Black none</div></div><div class="panel"><h2>Discard Pile</h2><div id="discardText" class="display small"></div></div><div class="panel"><h2>Game Log</h2><div id="log" class="log"></div></div></div>
 </div>
-
-<div id="drawModal" class="modal">
-  <div class="modal-content">
-    <h2 id="drawTitle">Enter Drawn Card</h2>
-    <div class="small">Buttons show remaining count. White = full, black = none, red = low, yellow = medium, green = high.</div>
-    <div id="drawButtons" class="cards"></div>
-    <div class="row">
-      <button onclick="closeModal()">Cancel</button>
-    </div>
-  </div>
-</div>
-
-<div id="actionModal" class="modal">
-  <div class="modal-content">
-    <h2 id="actionTitle">Resolve Action</h2>
-    <div id="actionBody"></div>
-    <div class="row">
-      <button onclick="discardPendingAction()">Discard Action / No Valid Target</button>
-      <button onclick="closeActionModal()">Close</button>
-    </div>
-  </div>
-</div>
-
+<div id="actionModal" class="modal"><div class="modal-content"><h2 id="actionTitle">Resolve Action</h2><div id="actionBody"></div><div class="row"><button onclick="discardActionAndContinue()">Discard Action / Skip</button><button onclick="closeActionModal()">Close</button></div></div></div>
 <script>
-const CONFIGS = {
-  classic: {
-    name: "Original Flip 7",
-    cards: ["0","1","2","3","4","5","6","7","8","9","10","11","12","+2","+4","+6","+8","+10","x2","Second Chance","Freeze","Flip Three"],
-    counts: {"0":1,"1":1,"2":2,"3":3,"4":4,"5":5,"6":6,"7":7,"8":8,"9":9,"10":10,"11":11,"12":12,"+2":1,"+4":1,"+6":1,"+8":1,"+10":1,"x2":1,"Second Chance":3,"Freeze":3,"Flip Three":3},
-    actions: ["Freeze","Flip Three"],
-    modifiers: ["+2","+4","+6","+8","+10","x2"],
-    special: ["Second Chance"]
-  },
-  vengeance: {
-    name: "Flip 7: With a Vengeance",
-    cards: ["1","2","3","4","5","6","7","8","9","10","11","12","13","Zero","Unlucky 7","Lucky 13","-2","-4","-6","-8","-10","÷2","Just One More","Flip Four","Swap","Steal","Discard"],
-    counts: {"1":1,"2":2,"3":3,"4":4,"5":5,"6":6,"7":6,"8":8,"9":9,"10":10,"11":11,"12":12,"13":12,"Zero":1,"Unlucky 7":1,"Lucky 13":1,"-2":1,"-4":1,"-6":1,"-8":1,"-10":1,"÷2":1,"Just One More":2,"Flip Four":2,"Swap":2,"Steal":2,"Discard":2},
-    actions: ["Just One More","Flip Four","Swap","Steal","Discard"],
-    modifiers: ["-2","-4","-6","-8","-10","÷2"],
-    special: ["Zero","Unlucky 7","Lucky 13"]
-  }
-};
-
-let players = [];
-let activePlayerIndex = 0;
-let discardPile = [];
-let pendingAction = null;
-
-function cfg(){ return CONFIGS[document.getElementById("gameVersion").value]; }
-function version(){ return document.getElementById("gameVersion").value; }
-
-function newGame(){
-  const n = Math.max(1, Math.min(10, Number(document.getElementById("playerCount").value || 3)));
-  players = [];
-  for(let i=0;i<n;i++){
-    players.push({name:`Player ${i+1}`, hand:[], stayed:false, busted:false, score:0});
-  }
-  activePlayerIndex = 0;
-  discardPile = [];
-  pendingAction = null;
-  update();
-}
-
-function fullDeck(){ return {...cfg().counts}; }
-
-function getDeck(){
-  const deck = fullDeck();
-  const allInPlay = [...discardPile];
-  players.forEach(p => allInPlay.push(...p.hand));
-  allInPlay.forEach(card => { if(deck[card] > 0) deck[card]--; });
-  return deck;
-}
-
-function cardsText(cards){
-  if(!cards.length) return "None";
-  const c = {};
-  cards.forEach(x => c[x] = (c[x] || 0) + 1);
-  return Object.entries(c).map(([k,v]) => `<span class="pill">${k} × ${v}</span>`).join(" ");
-}
-
-function isNumber(card){
-  if(version()==="vengeance") return !isNaN(card) || ["Zero","Unlucky 7","Lucky 13"].includes(card);
-  return !isNaN(card);
-}
-
-function identity(card){
-  if(card==="Zero") return "0";
-  if(card==="Unlucky 7") return "7";
-  if(card==="Lucky 13") return "13L";
-  return String(card);
-}
-
-function value(card){
-  if(card==="Zero") return 0;
-  if(card==="Unlucky 7") return 7;
-  if(card==="Lucky 13") return 13;
-  return Number(card);
-}
-
-function cleanVengeanceHand(cards){
-  if(!cards.includes("Unlucky 7")) return cards;
-  return cards.filter(card => {
-    if(card==="Unlucky 7") return true;
-    if(card==="Lucky 13" || card==="Zero") return false;
-    if(!isNaN(card)) return false;
-    if(cfg().modifiers.includes(card)) return false;
-    return true;
-  });
-}
-
-function scoreHand(cards){
-  let hand = version()==="vengeance" ? cleanVengeanceHand(cards) : [...cards];
-  const nums = hand.filter(isNumber);
-  let total = nums.map(value).reduce((a,b)=>a+b,0);
-  const unique = new Set(nums.map(identity)).size;
-
-  if(version()==="classic"){
-    let bonus = 0, mult = 1;
-    hand.forEach(card => {
-      if(card.startsWith("+")) bonus += Number(card.replace("+",""));
-      if(card==="x2") mult *= 2;
-    });
-    total = total * mult + bonus;
-  } else {
-    if(hand.includes("Zero") && unique < 7) total = 0;
-    if(hand.includes("÷2")) total = Math.floor(total / 2);
-    hand.forEach(card => {
-      if(["-2","-4","-6","-8","-10"].includes(card)) total -= Number(card.replace("-",""));
-    });
-  }
-
-  total = Math.max(0,total);
-  if(unique >= 7) total += 15;
-  return total;
-}
-
-function hasFlip7(p){
-  return new Set(p.hand.filter(isNumber).map(identity)).size >= 7;
-}
-
-function wouldBust(hand, card){
-  if(!isNumber(card)) return false;
-  if(version()==="vengeance"){
-    if(card==="Lucky 13") return false;
-    if(card==="13" && hand.some(c => identity(c)==="13L") && !hand.some(c => c==="13")) return false;
-  }
-  return hand.filter(isNumber).map(identity).includes(identity(card));
-}
-
-function drawCardToPlayer(playerIndex, card){
-  const p = players[playerIndex];
-  if((getDeck()[card] || 0) <= 0) return;
-
-  if(wouldBust(p.hand, card)){
-    if(version()==="classic" && p.hand.includes("Second Chance")){
-      discardPile.push("Second Chance");
-      p.hand = p.hand.filter((c, i) => !(c==="Second Chance" && i===p.hand.indexOf("Second Chance")));
-      discardPile.push(card);
-      alert(`${p.name} used Second Chance. Duplicate ${card} was discarded.`);
-    } else {
-      p.hand.push(card);
-      bustPlayer(playerIndex);
-      alert(`${p.name} busted on ${card}.`);
-    }
-    update();
-    return;
-  }
-
-  p.hand.push(card);
-
-  if(version()==="vengeance" && card==="Unlucky 7"){
-    const before = [...p.hand];
-    p.hand = cleanVengeanceHand(p.hand);
-    before.forEach(c => { if(!p.hand.includes(c)) discardPile.push(c); });
-  }
-
-  if(cfg().actions.includes(card)){
-    pendingAction = {card, ownerIndex: playerIndex};
-    openActionModal(card, playerIndex);
-  }
-
-  if(hasFlip7(p)){
-    alert(`${p.name} hit Flip 7! Round ends.`);
-    endRound();
-    return;
-  }
-
-  update();
-}
-
-function bustPlayer(i){
-  players[i].busted = true;
-  players[i].stayed = false;
-  discardPile.push(...players[i].hand);
-  players[i].hand = [];
-}
-
-function stayActive(){
-  const p = players[activePlayerIndex];
-  if(!p || p.busted) return;
-  p.stayed = true;
-  nextTurn();
-}
-
-function nextTurn(){
-  if(players.every(p => p.stayed || p.busted)){
-    endRound();
-    return;
-  }
-  for(let step=1; step<=players.length; step++){
-    const idx = (activePlayerIndex + step) % players.length;
-    if(!players[idx].stayed && !players[idx].busted){
-      activePlayerIndex = idx;
-      update();
-      return;
-    }
-  }
-}
-
-function endRound(){
-  players.forEach(p => {
-    if(!p.busted) p.score += scoreHand(p.hand);
-    discardPile.push(...p.hand);
-    p.hand = [];
-    p.stayed = false;
-    p.busted = false;
-  });
-  activePlayerIndex = 0;
-  alert("Round scored. Cards moved to discard.");
-  update();
-}
-
-function resetRoundOnly(){
-  players.forEach(p => {
-    discardPile.push(...p.hand);
-    p.hand = [];
-    p.stayed = false;
-    p.busted = false;
-  });
-  activePlayerIndex = 0;
-  update();
-}
-
-function shuffleDiscardBack(){
-  discardPile = [];
-  update();
-}
-
-function evaluatePlayer(p){
-  const deck = getDeck();
-  const totalCards = Object.values(deck).reduce((a,b)=>a+b,0);
-  const current = scoreHand(p.hand);
-  if(totalCards <= 0) return {rec:"STAY", current, expected:0, bust:0, flip7:0, safe:0, bustCards:0};
-
-  let expected = 0, bustCards = 0, safe = 0, flip7 = 0;
-  Object.entries(deck).forEach(([card,count]) => {
-    if(count <= 0) return;
-    const prob = count / totalCards;
-    let outcome = current;
-
-    if(wouldBust(p.hand, card)){
-      if(version()==="classic" && p.hand.includes("Second Chance")){
-        outcome = current; safe += count;
-      } else {
-        outcome = 0; bustCards += count;
-      }
-    } else {
-      let next = [...p.hand, card];
-      if(version()==="vengeance" && card==="Unlucky 7") next = cleanVengeanceHand(next);
-      if(cfg().actions.includes(card)) outcome = current;
-      else outcome = scoreHand(next);
-      safe += count;
-      if(new Set(next.filter(isNumber).map(identity)).size >= 7) flip7 += prob;
-    }
-    expected += outcome * prob;
-  });
-
-  const risk = document.getElementById("riskMode")?.value || "Normal";
-  if(risk==="Conservative") expected *= .9;
-  if(risk==="Aggressive") expected *= 1.1;
-
-  const rec = expected > current ? "HIT" : "STAY";
-  return {rec, current, expected, bust:(bustCards/totalCards)*100, flip7:flip7*100, safe, bustCards};
-}
-
-function buttonClass(card){
-  const deck = getDeck();
-  const rem = deck[card] || 0;
-  const max = cfg().counts[card] || 1;
-  if(rem === max) return "full";
-  if(rem === 0) return "none";
-  const r = rem / max;
-  if(r <= .33) return "low";
-  if(r <= .66) return "medium";
-  return "high";
-}
-
-function cardLabel(card){
-  const deck = getDeck();
-  return `${card}\n${deck[card] || 0}/${cfg().counts[card]}`;
-}
-
-function openDrawModal(mode, playerIndex){
-  pendingAction = pendingAction || {};
-  pendingAction.drawMode = mode;
-  pendingAction.targetIndex = playerIndex;
-  document.getElementById("drawTitle").innerText = `Enter card for ${players[playerIndex].name}`;
-  const wrap = document.getElementById("drawButtons");
-  wrap.innerHTML = "";
-  cfg().cards.forEach(card => {
-    const b = document.createElement("button");
-    b.className = `card-btn ${buttonClass(card)}`;
-    b.innerText = cardLabel(card);
-    b.onclick = () => {
-      if((getDeck()[card] || 0) <= 0) return;
-      closeModal();
-      drawCardToPlayer(playerIndex, card);
-      if(mode === "flipFour"){
-        pendingAction.remaining = (pendingAction.remaining || 1) - 1;
-        if(pendingAction.remaining > 0 && !players[playerIndex].busted && !hasFlip7(players[playerIndex])){
-          openDrawModal("flipFour", playerIndex);
-        } else {
-          pendingAction = null;
-          nextTurn();
-        }
-      } else if(mode === "justOneMore"){
-        players[playerIndex].stayed = true;
-        pendingAction = null;
-        nextTurn();
-      } else {
-        nextTurn();
-      }
-    };
-    wrap.appendChild(b);
-  });
-  document.getElementById("drawModal").style.display = "flex";
-}
-
-function closeModal(){ document.getElementById("drawModal").style.display = "none"; }
-
-function openActionModal(card, ownerIndex){
-  document.getElementById("actionTitle").innerText = `Resolve ${card}`;
-  const body = document.getElementById("actionBody");
-  body.innerHTML = `<div class="small">Choose a target or option. If the action has no valid target, discard it.</div>`;
-
-  if(card==="Freeze"){
-    players[ownerIndex].stayed = true;
-    discardPendingAction();
-    nextTurn();
-    return;
-  }
-
-  if(card==="Flip Three"){
-    pendingAction = {card, ownerIndex, remaining:3};
-    body.innerHTML += `<p>Flip Three: draw up to 3 cards for ${players[ownerIndex].name}. Stop on bust or Flip 7.</p><button class="green" onclick="openDrawModal('flipFour', ${ownerIndex})">Start Flip Three</button>`;
-  }
-
-  if(card==="Just One More"){
-    body.innerHTML += `<p>Choose a player. They must take one more card, then they are frozen/stayed.</p>`;
-    players.forEach((p,i) => {
-      if(!p.busted && !p.stayed) body.innerHTML += `<button style="width:100%;margin-top:8px" onclick="openDrawModal('justOneMore', ${i})">${p.name}</button>`;
-    });
-  }
-
-  if(card==="Flip Four"){
-    body.innerHTML += `<p>Choose a player. They must flip up to 4 cards. Stop immediately on bust or Flip 7.</p>`;
-    players.forEach((p,i) => {
-      if(!p.busted && !p.stayed) body.innerHTML += `<button style="width:100%;margin-top:8px" onclick="startFlipFour(${i})">${p.name}</button>`;
-    });
-  }
-
-  if(card==="Steal"){
-    body.innerHTML += `<p>Choose a player to steal from, then choose one of their cards.</p>`;
-    players.forEach((p,i) => {
-      if(i!==ownerIndex && p.hand.length) body.innerHTML += `<button style="width:100%;margin-top:8px" onclick="chooseSteal(${i})">${p.name}</button>`;
-    });
-  }
-
-  if(card==="Discard"){
-    body.innerHTML += `<p>Choose a player, then choose one of their cards to discard.</p>`;
-    players.forEach((p,i) => {
-      if(i!==ownerIndex && p.hand.length) body.innerHTML += `<button style="width:100%;margin-top:8px" onclick="chooseDiscard(${i})">${p.name}</button>`;
-    });
-  }
-
-  if(card==="Swap"){
-    body.innerHTML += `<p>Choose an opponent, then choose your card and their card to swap.</p>`;
-    players.forEach((p,i) => {
-      if(i!==ownerIndex && p.hand.length && players[ownerIndex].hand.length) body.innerHTML += `<button style="width:100%;margin-top:8px" onclick="chooseSwap(${i})">${p.name}</button>`;
-    });
-  }
-
-  document.getElementById("actionModal").style.display = "flex";
-}
-
-function closeActionModal(){ document.getElementById("actionModal").style.display = "none"; }
-
-function discardPendingAction(){
-  if(pendingAction && pendingAction.card){
-    const p = players[pendingAction.ownerIndex];
-    const idx = p.hand.indexOf(pendingAction.card);
-    if(idx >= 0) {
-      p.hand.splice(idx,1);
-      discardPile.push(pendingAction.card);
-    }
-  }
-  pendingAction = null;
-  closeActionModal();
-  update();
-}
-
-function startFlipFour(targetIndex){
-  pendingAction.remaining = 4;
-  closeActionModal();
-  openDrawModal("flipFour", targetIndex);
-}
-
-function chooseSteal(targetIndex){
-  const owner = players[pendingAction.ownerIndex];
-  const target = players[targetIndex];
-  let html = `<p>Steal which card from ${target.name}?</p>`;
-  target.hand.forEach((card, idx) => html += `<button style="width:100%;margin-top:8px" onclick="doSteal(${targetIndex},${idx})">${card}</button>`);
-  document.getElementById("actionBody").innerHTML = html;
-}
-
-function doSteal(targetIndex, cardIndex){
-  const owner = players[pendingAction.ownerIndex];
-  const target = players[targetIndex];
-  const [card] = target.hand.splice(cardIndex,1);
-  owner.hand.push(card);
-  pendingAction = null;
-  closeActionModal();
-  update();
-}
-
-function chooseDiscard(targetIndex){
-  const target = players[targetIndex];
-  let html = `<p>Discard which card from ${target.name}?</p>`;
-  target.hand.forEach((card, idx) => html += `<button style="width:100%;margin-top:8px" onclick="doDiscard(${targetIndex},${idx})">${card}</button>`);
-  document.getElementById("actionBody").innerHTML = html;
-}
-
-function doDiscard(targetIndex, cardIndex){
-  const target = players[targetIndex];
-  const [card] = target.hand.splice(cardIndex,1);
-  discardPile.push(card);
-  pendingAction = null;
-  closeActionModal();
-  update();
-}
-
-function chooseSwap(targetIndex){
-  const owner = players[pendingAction.ownerIndex];
-  let html = `<p>Choose your card to swap.</p>`;
-  owner.hand.forEach((card, idx) => html += `<button style="width:100%;margin-top:8px" onclick="chooseSwapMine(${targetIndex},${idx})">${card}</button>`);
-  document.getElementById("actionBody").innerHTML = html;
-}
-
-function chooseSwapMine(targetIndex, myIndex){
-  const target = players[targetIndex];
-  let html = `<p>Choose ${target.name}'s card.</p>`;
-  target.hand.forEach((card, idx) => html += `<button style="width:100%;margin-top:8px" onclick="doSwap(${targetIndex},${myIndex},${idx})">${card}</button>`);
-  document.getElementById("actionBody").innerHTML = html;
-}
-
-function doSwap(targetIndex, myIndex, theirIndex){
-  const owner = players[pendingAction.ownerIndex];
-  const target = players[targetIndex];
-  const tmp = owner.hand[myIndex];
-  owner.hand[myIndex] = target.hand[theirIndex];
-  target.hand[theirIndex] = tmp;
-  pendingAction = null;
-  closeActionModal();
-  update();
-}
-
-function renderPlayers(){
-  const wrap = document.getElementById("players");
-  wrap.innerHTML = "";
-  players.forEach((p,i) => {
-    const ev = evaluatePlayer(p);
-    const div = document.createElement("div");
-    div.className = `player-card ${i===activePlayerIndex ? "active" : ""} ${p.stayed ? "stayed" : ""} ${p.busted ? "busted" : ""}`;
-    div.innerHTML = `
-      <h3>${p.name} ${i===activePlayerIndex ? "👉" : ""}</h3>
-      <div>Score: <b>${p.score}</b> | Round: <b>${scoreHand(p.hand)}</b></div>
-      <div>Status: <b>${p.busted ? "BUSTED" : p.stayed ? "STAYED" : "ACTIVE"}</b></div>
-      <div class="display">${cardsText(p.hand)}</div>
-      <div class="small">Advice: ${ev.rec} | Bust ${ev.bust.toFixed(1)}% | EV ${ev.expected.toFixed(2)}</div>
-    `;
-    wrap.appendChild(div);
-  });
-}
-
-function renderAdvice(){
-  const p = players[activePlayerIndex];
-  if(!p){ return; }
-  const ev = evaluatePlayer(p);
-  const a = document.getElementById("advice");
-  a.innerText = ev.rec;
-  a.className = `result ${ev.rec==="HIT" ? "hit" : "stay"}`;
-
-  document.getElementById("turnInfo").innerHTML = `
-    Active: <b>${p.name}</b><br>
-    Hand: ${cardsText(p.hand)}<br>
-    Status: <b>${p.busted ? "BUSTED" : p.stayed ? "STAYED" : "ACTIVE"}</b>
-  `;
-
-  document.getElementById("odds").innerHTML = `
-    <div class="stat">Current Round Score<br><b>${ev.current}</b></div>
-    <div class="stat">Expected If Hit<br><b>${ev.expected.toFixed(2)}</b></div>
-    <div class="stat">Bust Chance<br><b>${ev.bust.toFixed(1)}%</b></div>
-    <div class="stat">Flip 7 Chance<br><b>${ev.flip7.toFixed(1)}%</b></div>
-    <div class="stat">Safe Cards<br><b>${ev.safe}</b></div>
-    <div class="stat">Bust Cards<br><b>${ev.bustCards}</b></div>
-  `;
-}
-
-function renderDeck(){
-  const deck = getDeck();
-  document.getElementById("discardPile").innerHTML = cardsText(discardPile);
-  document.getElementById("deckList").innerHTML = cfg().cards.map(card => `${card}: <b>${deck[card] || 0}</b> / ${cfg().counts[card]}`).join("<br>");
-}
-
-function update(){
-  if(!players.length) newGame();
-  renderAdvice();
-  renderPlayers();
-  renderDeck();
-}
-
-newGame();
+const CONFIGS={classic:{name:"Original Flip 7",cards:["0","1","2","3","4","5","6","7","8","9","10","11","12","+2","+4","+6","+8","+10","x2","Second Chance","Freeze","Flip Three"],counts:{"0":1,"1":1,"2":2,"3":3,"4":4,"5":5,"6":6,"7":7,"8":8,"9":9,"10":10,"11":11,"12":12,"+2":1,"+4":1,"+6":1,"+8":1,"+10":1,"x2":1,"Second Chance":3,"Freeze":3,"Flip Three":3},modifiers:["+2","+4","+6","+8","+10","x2"],actions:["Freeze","Flip Three"]},vengeance:{name:"Flip 7: With a Vengeance",cards:["1","2","3","4","5","6","7","8","9","10","11","12","13","Zero","Unlucky 7","Lucky 13","-2","-4","-6","-8","-10","÷2","Just One More","Flip Four","Swap","Steal","Discard"],counts:{"1":1,"2":2,"3":3,"4":4,"5":5,"6":6,"7":6,"8":8,"9":9,"10":10,"11":11,"12":12,"13":12,"Zero":1,"Unlucky 7":1,"Lucky 13":1,"-2":1,"-4":1,"-6":1,"-8":1,"-10":1,"÷2":1,"Just One More":2,"Flip Four":2,"Swap":2,"Steal":2,"Discard":2},modifiers:["-2","-4","-6","-8","-10","÷2"],actions:["Just One More","Flip Four","Swap","Steal","Discard"]}};
+let players=[],active=0,discard=[],round=1,logLines=[],gameStarted=false,pending=null,swapTemp=null;
+function cfg(){return CONFIGS[document.getElementById("gameVersion").value]}function version(){return document.getElementById("gameVersion").value}function mode(){return document.getElementById("playMode").value}function showAdvice(){return mode()==="tracker"||document.getElementById("showAdviceDigital").value==="yes"}function log(m,g=false){logLines.unshift(`<p style="color:${g?'#56e071':'#fff'}">${m}</p>`);if(logLines.length>90)logLines.pop()}
+function startGame(){const n=Math.max(1,Math.min(10,Number(document.getElementById("playerCount").value||4)));let names=document.getElementById("playerNames").value.split("\n").map(x=>x.trim()).filter(Boolean);while(names.length<n)names.push(`Player ${names.length+1}`);players=names.slice(0,n).map(name=>({name,hand:[],bustedHand:[],stayed:false,busted:false,score:0}));active=0;discard=[];round=1;pending=null;logLines=[];gameStarted=true;document.getElementById("setupCard").classList.add("hidden");document.getElementById("gameMenu").classList.remove("hidden");log(`Round ${round} started. ${players[active].name}'s turn.`,true);update()}
+function showSetup(){document.getElementById("setupCard").classList.remove("hidden");document.getElementById("gameMenu").classList.add("hidden")}
+function fullDeck(){return {...cfg().counts}}function getDeck(){const deck=fullDeck();const out=[...discard];players.forEach(p=>{out.push(...p.hand,...p.bustedHand)});out.forEach(c=>{if(deck[c]>0)deck[c]--});return deck}function remainingTotal(){return Object.values(getDeck()).reduce((a,b)=>a+b,0)}
+function shuffleDiscardBack(show=true){discard=[];if(show)log("Discard pile shuffled back into draw deck.",true);update()}function drawRandomCard(){let deck=getDeck();let total=Object.values(deck).reduce((a,b)=>a+b,0);if(total<=0&&discard.length>0){shuffleDiscardBack(false);deck=getDeck();total=Object.values(deck).reduce((a,b)=>a+b,0)}if(total<=0)return null;let r=Math.floor(Math.random()*total);for(const [c,n] of Object.entries(deck)){if(r<n)return c;r-=n}return null}
+function isNumber(c){return version()==="vengeance"?(!isNaN(c)||["Zero","Unlucky 7","Lucky 13"].includes(c)):!isNaN(c)}function id(c){if(c==="Zero")return"0";if(c==="Unlucky 7")return"7";if(c==="Lucky 13")return"13L";return String(c)}function val(c){if(c==="Zero")return 0;if(c==="Unlucky 7")return 7;if(c==="Lucky 13")return 13;return Number(c)}function isAction(c){return cfg().actions.includes(c)}function isModifier(c){return cfg().modifiers.includes(c)}
+function cleanVengeanceHand(cards){if(!cards.includes("Unlucky 7"))return{hand:cards,removed:[]};const kept=[],removed=[];cards.forEach(c=>{const rm=c==="Zero"||c==="Lucky 13"||!isNaN(c)||isModifier(c);if(c==="Unlucky 7")kept.push(c);else if(rm)removed.push(c);else kept.push(c)});return{hand:kept,removed}}
+function score(cards){let hand=[...cards];if(version()==="vengeance")hand=cleanVengeanceHand(hand).hand;const nums=hand.filter(isNumber),unique=new Set(nums.map(id)).size;let total=nums.map(val).reduce((a,b)=>a+b,0);if(version()==="classic"){let bonus=0,mult=1;hand.forEach(c=>{if(c.startsWith("+"))bonus+=Number(c.slice(1));if(c==="x2")mult*=2});total=total*mult+bonus}else{if(hand.includes("Zero")&&unique<7)total=0;if(hand.includes("÷2"))total=Math.floor(total/2);hand.forEach(c=>{if(["-2","-4","-6","-8","-10"].includes(c))total-=Number(c.slice(1))})}total=Math.max(0,total);if(unique>=7)total+=15;return total}
+function hasFlip7(p){return new Set(p.hand.filter(isNumber).map(id)).size>=7}function wouldBust(hand,c){if(!isNumber(c))return false;if(version()==="vengeance"){if(c==="Lucky 13")return false;if(c==="13"){const normal=hand.some(x=>x==="13"),lucky=hand.some(x=>x==="Lucky 13");if(normal)return true;if(lucky)return false}}return hand.filter(isNumber).map(id).includes(id(c))}
+function hitActive(){if(!gameStarted)startGame();const p=players[active];if(p.busted||p.stayed){nextTurn();return}if(mode()==="digital"){const c=drawRandomCard();if(!c){log("No cards left to draw.");return}log(`${p.name} hits and draws ${c}.`);receiveCard(active,c,{advance:true})}else document.getElementById("manualEntryPanel").scrollIntoView({behavior:"smooth",block:"start"})}
+function receiveCard(i,c,o={}){const p=players[i];if(!p||p.busted)return;if(wouldBust(p.hand,c)){if(version()==="classic"&&p.hand.includes("Second Chance")){p.hand.splice(p.hand.indexOf("Second Chance"),1);discard.push("Second Chance",c);log(`${p.name} used Second Chance. ${c} was discarded.`);if(o.advance)nextTurn();update();return}p.hand.push(c);bustPlayer(i);log(`${p.name} busted on ${c}. Cards stay face down until round end.`);if(o.advance)nextTurn();update();return}p.hand.push(c);if(version()==="vengeance"&&c==="Unlucky 7"){const cl=cleanVengeanceHand(p.hand);p.hand=cl.hand;discard.push(...cl.removed);if(cl.removed.length)log(`${p.name}'s Unlucky 7 discarded: ${cl.removed.join(", ")}.`)}if(hasFlip7(p)){log(`${p.name} hit Flip 7! Round ends.`,true);endRound();return}if(isAction(c)){pending={card:c,owner:i,after:o.advance};openAction(c,i);update();return}if(o.advance)nextTurn();update()}
+function bustPlayer(i){const p=players[i];p.busted=true;p.stayed=false;p.bustedHand=[...p.hand];p.hand=[]}function stayActive(){if(!gameStarted)return;const p=players[active];if(!p.busted){p.stayed=true;log(`${p.name} stays at ${score(p.hand)}.`)}nextTurn()}function nextTurn(){if(!players.length)return;if(players.every(p=>p.stayed||p.busted)){log("All players are stayed or out. End the round when ready.");update();return}for(let i=1;i<=players.length;i++){const idx=(active+i)%players.length;if(!players[idx].stayed&&!players[idx].busted){active=idx;log(`${players[active].name}'s turn.`);update();return}}}
+function endRound(){if(!players.length)return;players.forEach(p=>{if(!p.busted)p.score+=score(p.hand);discard.push(...p.hand,...p.bustedHand);p.hand=[];p.bustedHand=[];p.busted=false;p.stayed=false});round++;active=0;log(`Round scored. Round ${round} begins.`,true);update()}
+function evalPlayer(p){const deck=getDeck(),total=Object.values(deck).reduce((a,b)=>a+b,0),current=score(p.hand);if(total<=0)return{rec:"STAY",current,ev:0,bust:0,flip7:0,improve:0,bustCards:0};let ev=0,bustCards=0,flip7=0,improve=0;Object.entries(deck).forEach(([c,n])=>{if(n<=0)return;const prob=n/total;let out=current;if(wouldBust(p.hand,c)){if(version()==="classic"&&p.hand.includes("Second Chance"))out=current;else{out=0;bustCards+=n}}else{let next=[...p.hand,c];if(version()==="vengeance"&&c==="Unlucky 7")next=cleanVengeanceHand(next).hand;out=isAction(c)?current:score(next);if(new Set(next.filter(isNumber).map(id)).size>=7)flip7+=prob;if(out>current)improve+=n}ev+=out*prob});return{rec:ev>current?"HIT":"STAY",current,ev,bust:bustCards/total*100,flip7:flip7*100,improve:improve/total*100,bustCards}}
+function buttonClass(c){const d=getDeck(),rem=d[c]||0,max=cfg().counts[c]||1;if(rem===max)return"card-full";if(rem===0)return"card-none";const r=rem/max;if(r<=.33)return"card-low";if(r<=.66)return"card-med";return"card-high"}function cardHtml(c){const d=getDeck();return`<span class="card-name">${c}</span><span class="card-count">${d[c]||0}/${cfg().counts[c]||0}</span>`}
+function renderCardGrid(id,clickable){const el=document.getElementById(id);el.innerHTML="";cfg().cards.forEach(c=>{const b=document.createElement("button");b.className=`card-btn ${buttonClass(c)}`;b.innerHTML=cardHtml(c);b.disabled=(getDeck()[c]||0)<=0;if(clickable)b.onclick=()=>receiveCard(active,c,{advance:true});el.appendChild(b)})}
+function cardCls(c,down=false){if(down)return"mini-card down";if(c==="Lucky 13"||c==="÷2"||c==="-4")return"mini-card black";if(c.startsWith("-"))return"mini-card neg";return"mini-card"}
+function renderPlayers(){const el=document.getElementById("playersGrid");el.innerHTML="";players.forEach((p,i)=>{const div=document.createElement("div");div.className=`player ${i===active?"active":""} ${p.stayed?"stayed":""} ${p.busted?"busted":""}`;const status=p.busted?"BUSTED":p.stayed?"STAYED":i===active?"ACTIVE":"WAITING";const shown=p.busted?p.bustedHand.map(c=>`<div class="${cardCls(c,true)}">?</div>`).join(""):p.hand.map(c=>`<div class="${cardCls(c)}">${c}</div>`).join("");div.innerHTML=`<div class="player-head"><h3>${p.name}</h3><span class="badge">${status}</span></div><div class="scoreline">Game score: <b>${p.score}</b> · Round score: <b>${p.busted?0:score(p.hand)}</b></div><div class="cards-in-front">${shown||'<span class="small">No cards</span>'}</div>${p.busted?'<div class="small">Cards are face down and out of play until round end.</div>':''}`;el.appendChild(div)})}
+function renderAdvice(){const p=players[active];if(!p){document.getElementById("turnTitle").innerText="Start a game";return}document.getElementById("turnTitle").innerText=`Round ${round}: ${p.name}'s turn`;document.getElementById("turnDetails").innerHTML=`Version: <b>${cfg().name}</b> · Mode: <b>${mode()==="digital"?"Play in app":"Real-life tracker"}</b><br>Deck cards left: <b>${remainingTotal()}</b>`;const advice=document.getElementById("adviceBox"),odds=document.getElementById("oddsBox");if(!showAdvice()){advice.innerHTML='<div class="display small">Odds and advice are hidden.</div>';odds.innerHTML='';return}const ev=evalPlayer(p);advice.innerHTML=`<div class="result ${ev.rec==="HIT"?"hit":"stay"}">${ev.rec}</div>`;odds.innerHTML=`<div class="stat">Current round score <b>${ev.current}</b></div><div class="stat">Expected if hit <b>${ev.ev.toFixed(2)}</b></div><div class="stat">Bust chance <b>${ev.bust.toFixed(1)}%</b></div><div class="stat">Flip 7 chance <b>${ev.flip7.toFixed(1)}%</b></div><div class="stat">Improve chance <b>${ev.improve.toFixed(1)}%</b></div><div class="stat">Bust cards <b>${ev.bustCards}</b></div>`}
+function renderDiscard(){if(!discard.length)document.getElementById("discardText").innerHTML="Empty";else{const c={};discard.forEach(x=>c[x]=(c[x]||0)+1);document.getElementById("discardText").innerHTML=Object.entries(c).map(([k,n])=>`${k} × ${n}`).join(" · ")}}function renderLog(){document.getElementById("log").innerHTML=logLines.join("")}
+function validTargets(){return players.map((p,i)=>({p,i})).filter(x=>!x.p.busted)}function openAction(card,owner){const modal=document.getElementById("actionModal"),title=document.getElementById("actionTitle"),body=document.getElementById("actionBody");title.innerText=`Resolve ${card}`;body.innerHTML="";if(card==="Freeze"){players[owner].stayed=true;log(`${players[owner].name} is frozen/stays.`);discardActionCard(owner,card);pending=null;closeActionModal();if(mode()==="digital")nextTurn();update();return}if(card==="Flip Three")body.innerHTML=`<p>Flip Three: draw up to 3 cards for ${players[owner].name}. Stop on bust or Flip 7.</p><button class="green" onclick="multiDraw(${owner},3)">Resolve Flip Three</button>`;if(card==="Just One More"){body.innerHTML='<p>Choose any non-busted player. They draw one card and then stay.</p>';validTargets().forEach(({p,i})=>body.innerHTML+=`<button class="choice" onclick="justOneMore(${i})">${p.name}</button>`)}if(card==="Flip Four"){body.innerHTML='<p>Choose any non-busted player. They draw up to 4 cards. Stop on bust or Flip 7.</p>';validTargets().forEach(({p,i})=>body.innerHTML+=`<button class="choice" onclick="multiDraw(${i},4)">${p.name}</button>`)}if(card==="Steal"){body.innerHTML='<p>Choose a non-busted player to steal from. Stayed players can be targeted.</p>';validTargets().filter(x=>x.i!==owner&&x.p.hand.length).forEach(({p,i})=>body.innerHTML+=`<button class="choice" onclick="chooseCard('steal',${i})">${p.name}</button>`)}if(card==="Discard"){body.innerHTML='<p>Choose a non-busted player and discard one of their cards.</p>';validTargets().filter(x=>x.p.hand.length).forEach(({p,i})=>body.innerHTML+=`<button class="choice" onclick="chooseCard('discard',${i})">${p.name}</button>`)}if(card==="Swap"){body.innerHTML='<p>Choose a non-busted player to swap cards with.</p>';validTargets().filter(x=>x.i!==owner&&x.p.hand.length&&players[owner].hand.length).forEach(({p,i})=>body.innerHTML+=`<button class="choice" onclick="chooseSwapMine(${i})">${p.name}</button>`)}modal.style.display="flex"}
+function closeActionModal(){document.getElementById("actionModal").style.display="none"}function discardActionCard(owner,card){const p=players[owner],idx=p.hand.indexOf(card);if(idx>=0){p.hand.splice(idx,1);discard.push(card)}}function discardActionAndContinue(){if(pending)discardActionCard(pending.owner,pending.card);pending=null;closeActionModal();nextTurn()}
+function justOneMore(target){closeActionModal();if(mode()==="digital"){const c=drawRandomCard();if(c){log(`${players[target].name} is forced to draw ${c}.`);receiveCard(target,c,{advance:false})}if(!players[target].busted)players[target].stayed=true;if(pending)discardActionCard(pending.owner,pending.card);pending=null;nextTurn()}else alert("Tracker mode: tap the forced card in Enter Drawn Card, then mark the target stayed if needed.")}
+function multiDraw(target,n){closeActionModal();if(mode()==="digital"){for(let i=0;i<n;i++){if(players[target].busted||hasFlip7(players[target]))break;const c=drawRandomCard();if(!c)break;log(`${players[target].name} forced draw: ${c}.`);receiveCard(target,c,{advance:false});if(pending===null)return}if(pending)discardActionCard(pending.owner,pending.card);pending=null;nextTurn()}else alert(`Tracker mode: manually enter up to ${n} cards for ${players[target].name}. Stop on bust or Flip 7.`)}
+function chooseCard(kind,target){const body=document.getElementById("actionBody");body.innerHTML=`<p>Choose a card from ${players[target].name}.</p>`;players[target].hand.forEach((c,idx)=>body.innerHTML+=`<button class="choice" onclick="doCardAction('${kind}',${target},${idx})">${c}</button>`)}function doCardAction(kind,target,idx){const owner=pending.owner,[card]=players[target].hand.splice(idx,1);if(kind==="steal"){players[owner].hand.push(card);log(`${players[owner].name} stole ${card} from ${players[target].name}.`)}else{discard.push(card);log(`${card} was discarded from ${players[target].name}.`)}discardActionCard(owner,pending.card);pending=null;closeActionModal();nextTurn()}
+function chooseSwapMine(target){swapTemp={target};const body=document.getElementById("actionBody");body.innerHTML=`<p>Choose ${players[pending.owner].name}'s card to swap.</p>`;players[pending.owner].hand.forEach((c,idx)=>body.innerHTML+=`<button class="choice" onclick="chooseSwapTheirs(${idx})">${c}</button>`)}function chooseSwapTheirs(myIdx){swapTemp.myIdx=myIdx;const target=swapTemp.target,body=document.getElementById("actionBody");body.innerHTML=`<p>Choose ${players[target].name}'s card.</p>`;players[target].hand.forEach((c,idx)=>body.innerHTML+=`<button class="choice" onclick="doSwap(${idx})">${c}</button>`)}function doSwap(theirIdx){const owner=pending.owner,target=swapTemp.target,myIdx=swapTemp.myIdx,tmp=players[owner].hand[myIdx];players[owner].hand[myIdx]=players[target].hand[theirIdx];players[target].hand[theirIdx]=tmp;log(`${players[owner].name} swapped cards with ${players[target].name}.`);discardActionCard(owner,pending.card);pending=null;swapTemp=null;closeActionModal();nextTurn()}
+function update(){if(!players.length)startGame();document.getElementById("manualEntryPanel").classList.toggle("hidden",mode()==="digital");renderAdvice();renderPlayers();renderCardGrid("drawGrid",true);renderCardGrid("deckGrid",false);renderDiscard();renderLog()}
+startGame();showSetup();
 </script>
 </body>
 </html>
