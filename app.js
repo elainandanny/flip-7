@@ -656,23 +656,37 @@ function renderPlayers(){
 
   players.forEach((p,i)=>{
     const d=document.createElement("div");
-    d.className=`player ${i===active?"active":""} ${p.stayed?"stayed":""} ${p.busted?"busted":""}`;
+    d.className=`player-row ${i===active?"active":""} ${p.stayed?"stayed":""} ${p.busted?"busted":""}`;
 
-    const status=p.busted ? "BUSTED" : p.stayed ? "STAYED" : i===active ? "ACTIVE" : "WAITING";
+    const status=p.busted ? "OUT" : p.stayed ? "STAY" : i===active ? "TURN" : "WAIT";
+    const ev = p.busted ? null : evalPlayer(p);
+    const roundScore = p.busted ? 0 : score(p.hand);
 
-    const shown = p.busted
+    const handHtml = p.busted
       ? p.bustedHand.map(c=>cardImageHtml(c,true)).join("")
       : p.hand.map(c=>cardImageHtml(c,false)).join("");
 
     d.innerHTML=`
-      <div class="player-head">
-        <h3>${p.name} ${i===dealer?"🂡":""}</h3>
-        <span class="badge">${status}${i===dealer?" · Dealer":""}</span>
+      <div class="player-name-cell">
+        <div class="player-name-main">${p.name} ${i===dealer?"🂡":""}</div>
+        <div class="player-status-mini">${status}${i===dealer?" · Dealer":""}</div>
       </div>
-      <div class="scoreline">Game score: <b>${p.score}</b> · Round score: <b>${p.busted?0:score(p.hand)}</b></div>
-      <div class="cards-in-front">${shown || '<span class="small">No cards</span>'}</div>
-      ${hasActiveZero(p)?'<div class="reason">Zero active: staying scores 0 unless this player reaches Flip 7.</div>':''}
-      ${p.busted?'<div class="busted-note">Out of round: cards are unavailable and greyed out until round end.</div>':''}
+
+      <div class="player-stat-mini">
+        Game
+        <b>${p.score}</b>
+      </div>
+
+      <div class="player-stat-mini">
+        Round
+        <b>${roundScore}</b>
+      </div>
+
+      <div>
+        <div class="hand-strip">${handHtml || '<span class="dashboard-note">No cards</span>'}</div>
+        ${!p.busted && ev ? `<div class="dashboard-note">${ev.rec} · Bust ${ev.bust.toFixed(0)}% · F7 ${ev.flip7.toFixed(0)}%</div>` : ''}
+        ${p.busted ? '<div class="dashboard-note">Out — cards greyed</div>' : ''}
+      </div>
     `;
 
     el.appendChild(d);
