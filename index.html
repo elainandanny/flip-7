@@ -587,12 +587,19 @@ function shuffleDiscardBack(show=true){
 }
 
 function flip7FutureChanceForHand(hand, deckState, hasSecondChance){
-  // Fast simulation instead of exact recursion.
-  // Exact recursion over a full Flip 7 deck is too large and can freeze the page.
-  const simulations = 1200;
-  let wins = 0;
-
+  // Fast estimate only. Do not run heavy odds math on an empty starting hand.
   const originalSeen = new Set(hand.filter(isNumber).map(id));
+
+  if(originalSeen.size === 0){
+    return 0;
+  }
+
+  if(originalSeen.size >= 7){
+    return 1;
+  }
+
+  const simulations = 250;
+  let wins = 0;
 
   for(let s=0; s<simulations; s++){
     const deck = {...deckState};
@@ -721,6 +728,11 @@ function evalPlayer(p){
   let reason = rec === "HIT"
     ? "Hitting has higher expected value than staying."
     : "Staying has equal or better expected value than hitting.";
+
+  if(p.hand.length === 0){
+    rec = "HIT";
+    reason = "You have no cards yet. Hit to start your turn.";
+  }
 
   if(zeroActive){
     rec = "HIT";
@@ -1099,6 +1111,8 @@ function doSwap(theirIdx){
 }
 
 showSetup();
+document.getElementById("turnTitle").innerText = "Press Start Game";
+document.getElementById("turnDetails").innerHTML = "Choose setup options, then press Start Game.";
 </script>
 </body>
 </html>
