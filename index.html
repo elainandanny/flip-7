@@ -587,59 +587,72 @@ function shuffleDiscardBack(show=true){
 }
 
 function flip7FutureChanceForHand(hand, deckState, hasSecondChance){
-  const seen = new Set(hand.filter(isNumber).map(id));
+  // Fast simulation instead of exact recursion.
+  // Exact recursion over a full Flip 7 deck is too large and can freeze the page.
+  const simulations = 1200;
+  let wins = 0;
 
-  function recurse(seenSet, deck, secondChanceAvailable){
-    if(seenSet.size >= 7) return 1;
+  const originalSeen = new Set(hand.filter(isNumber).map(id));
 
-    const total = Object.values(deck).reduce((a,b)=>a+b,0);
-    if(total <= 0) return 0;
+  for(let s=0; s<simulations; s++){
+    const deck = {...deckState};
+    const seen = new Set(originalSeen);
+    let secondChanceAvailable = hasSecondChance;
+    let alive = true;
 
-    let probability = 0;
+    while(alive && seen.size < 7){
+      const total = Object.values(deck).reduce((a,b)=>a+b,0);
+      if(total <= 0) break;
 
-    Object.entries(deck).forEach(([card,count]) => {
-      if(count <= 0) return;
+      let r = Math.floor(Math.random() * total);
+      let drawn = null;
 
-      const drawProb = count / total;
-      const nextDeck = {...deck};
-      nextDeck[card]--;
-
-      if(!isNumber(card)){
-        probability += drawProb * recurse(
-          new Set(seenSet),
-          nextDeck,
-          secondChanceAvailable || card==="Second Chance"
-        );
-        return;
+      for(const [card,count] of Object.entries(deck)){
+        if(count <= 0) continue;
+        if(r < count){
+          drawn = card;
+          break;
+        }
+        r -= count;
       }
 
-      const cardId = id(card);
+      if(!drawn) break;
 
-      if(seenSet.has(cardId)){
-        if(version()==="vengeance" && card==="Lucky 13"){
-          const nextSeen = new Set(seenSet);
-          nextSeen.add(cardId);
-          probability += drawProb * recurse(nextSeen, nextDeck, secondChanceAvailable);
-          return;
+      deck[drawn]--;
+
+      if(!isNumber(drawn)){
+        if(drawn === "Second Chance"){
+          secondChanceAvailable = true;
+        }
+        continue;
+      }
+
+      const drawnId = id(drawn);
+
+      if(seen.has(drawnId)){
+        if(version()==="vengeance" && drawn === "Lucky 13"){
+          seen.add(drawnId);
+          continue;
         }
 
         if(secondChanceAvailable){
-          probability += drawProb * recurse(new Set(seenSet), nextDeck, false);
+          secondChanceAvailable = false;
+          continue;
         }
 
-        return;
+        alive = false;
+        break;
       }
 
-      const nextSeen = new Set(seenSet);
-      nextSeen.add(cardId);
+      seen.add(drawnId);
+    }
 
-      probability += drawProb * recurse(nextSeen, nextDeck, secondChanceAvailable);
-    });
-
-    return probability;
+    if(seen.size >= 7){
+      wins++;
+    }
   }
 
-  return recurse(seen, deckState, hasSecondChance);
+  return wins / simulations;
 }
 
 function evalPlayer(p){
