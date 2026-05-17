@@ -956,96 +956,96 @@ function simPolicyShouldHit(player, deck){
 }
 
 function simResolveActionApprox(simPlayers, actorIndex, card, deck){
-  // Approximate action cards so MCTS stays fast.
-  // It models the strategic direction, not every exact human choice.
-
   const actor = simPlayers[actorIndex];
+  if(!actor) return;
 
   if(card==="Freeze"){
     actor.stayed = true;
     return;
   }
 
-  const candidates = simPlayers
+  const alive = simPlayers
     .map((p,i)=>({p,i}))
-    .filter(x => !x.p.busted && x.p.hand.some(isPlayableCardTarget));
+    .filter(x => !x.p.busted);
 
-  const opponents = candidates.filter(x => x.i !== actorIndex);
+  const candidatesWithCards = alive
+    .filter(x => x.p.hand.some(isPlayableCardTarget));
 
-  if(card==="Steal" && opponents.length){
-    opponents.sort((a,b)=>simScore(b.p.hand)-simScore(a.p.hand));
-    const target = opponents[0].p;
-    const bestIndex = target.hand
-      .map((c,idx)=>({c,idx}))
-      .filter(x=>isPlayableCardTarget(x.c))
-      .sort((a,b)=>valSafe(b.c)-valSafe(a.c))[0]?.idx ?? 0;
-    const stolen = target.hand.splice(bestIndex,1)[0];
+  const opponentsWithCards = candidatesWithCards
+    .filter(x => x.i !== actorIndex);
+
+  if(card==="Steal"){
+    if(!opponentsWithCards.length) return;
+
+    opponentsWithCards.sort((a,b)=>simScore(b.p.hand)-simScore(a.p.hand));
+    const target = opponentsWithCards[0].p;
+    const idx = bestTargetCardIndex(target.hand);
+
+    if(idx < 0) return;
+
+    const stolen = target.hand.splice(idx,1)[0];
     if(stolen) actor.hand.push(stolen);
     return;
   }
 
-  if(card==="Discard" && candidates.length){
-    candidates.sort((a,b)=>simScore(b.p.hand)-simScore(a.p.hand));
-    const target = candidates[0].p;
-    const bestIndex = target.hand
-      .map((c,idx)=>({c,idx}))
-      .filter(x=>isPlayableCardTarget(x.c))
-      .sort((a,b)=>valSafe(b.c)-valSafe(a.c))[0]?.idx ?? 0;
-    target.hand.splice(bestIndex,1);
+  if(card==="Discard"){
+    if(!candidatesWithCards.length) return;
+
+    candidatesWithCards.sort((a,b)=>simScore(b.p.hand)-simScore(a.p.hand));
+    const target = candidatesWithCards[0].p;
+    const idx = bestTargetCardIndex(target.hand);
+
+    if(idx < 0) return;
+
+    target.hand.splice(idx,1);
     return;
   }
 
-  if(card==="Swap" && opponents.length && actor.hand.length){
-    opponents.sort((a,b)=>simScore(b.p.hand)-simScore(a.p.hand));
-    const target = opponents[0].p;
-    if(target.hand.length){
-      const actorWorst = actor.hand
-        .map((c,idx)=>({c,idx}))
-        .filter(x=>isPlayableCardTarget(x.c))
-        .sort((a,b)=>valSafe(a.c)-valSafe(b.c))[0].idx;
-      const targetBest = target.hand
-        .map((c,idx)=>({c,idx}))
-        .filter(x=>isPlayableCardTarget(x.c))
-        .sort((a,b)=>valSafe(b.c)-valSafe(a.c))[0].idx;
-      const tmp = actor.hand[actorWorst];
-      actor.hand[actorWorst] = target.hand[targetBest];
-      target.hand[targetBest] = tmp;
-    }
+  if(card==="Swap"){
+    if(!actor.hand.some(isPlayableCardTarget)) return;
+    if(!opponentsWithCards.length) return;
+
+    opponentsWithCards.sort((a,b)=>simScore(b.p.hand)-simScore(a.p.hand));
+    const target = opponentsWithCards[0].p;
+
+    const actorIdx = worstTargetCardIndex(actor.hand);
+    const targetIdx = bestTargetCardIndex(target.hand);
+
+    if(actorIdx < 0 || targetIdx < 0) return;
+
+    const tmp = actor.hand[actorIdx];
+    actor.hand[actorIdx] = target.hand[targetIdx];
+    target.hand[targetIdx] = tmp;
     return;
   }
 
   if(card==="Just One More"){
-    const targets = simPlayers
-      .map((p,i)=>({p,i}))
-      .filter(x=>!x.p.busted);
+    if(!alive.length) return;
 
-    if(targets.length){
-      targets.sort((a,b)=>simScore(b.p.hand)-simScore(a.p.hand));
-      const t = targets[0];
-      const drawn = randomDrawFromDeckObject(deck);
-      if(drawn) simReceiveCard(simPlayers, t.i, drawn);
-      if(!t.p.busted) t.p.stayed = true;
-    }
+    alive.sort((a,b)=>simScore(b.p.hand)-simScore(a.p.hand));
+    const t = alive[0];
+
+    const drawn = randomDrawFromDeckObject(deck);
+    if(drawn) simReceiveCard(simPlayers, t.i, drawn);
+    if(!t.p.busted) t.p.stayed = true;
     return;
   }
 
   if(card==="Flip Four" || card==="Flip Three"){
+    if(!alive.length) return;
+
     const maxDraws = card==="Flip Four" ? 4 : 3;
-    const targets = simPlayers
-      .map((p,i)=>({p,i}))
-      .filter(x=>!x.p.busted);
+    alive.sort((a,b)=>simScore(b.p.hand)-simScore(a.p.hand));
+    const t = alive[0];
 
-    if(targets.length){
-      targets.sort((a,b)=>simScore(b.p.hand)-simScore(a.p.hand));
-      const t = targets[0];
+    for(let k=0;k<maxDraws;k++){
+      if(t.p.busted || simHasFlip7(t.p)) break;
 
-      for(let k=0;k<maxDraws;k++){
-        if(t.p.busted || simHasFlip7(t.p)) break;
-        const drawn = randomDrawFromDeckObject(deck);
-        if(!drawn) break;
-        const result = simReceiveCard(simPlayers, t.i, drawn);
-        if(result==="bust" || result==="flip7") break;
-      }
+      const drawn = randomDrawFromDeckObject(deck);
+      if(!drawn) break;
+
+      const result = simReceiveCard(simPlayers, t.i, drawn);
+      if(result==="bust" || result==="flip7") break;
     }
   }
 }
@@ -1054,6 +1054,29 @@ function valSafe(card){
   if(!isNumber(card)) return 0;
   return val(card);
 }
+
+function bestTargetCardIndex(hand){
+  const choices = hand
+    .map((c,idx)=>({c,idx}))
+    .filter(x=>isPlayableCardTarget(x.c));
+
+  if(!choices.length) return -1;
+
+  choices.sort((a,b)=>valSafe(b.c)-valSafe(a.c));
+  return choices[0].idx;
+}
+
+function worstTargetCardIndex(hand){
+  const choices = hand
+    .map((c,idx)=>({c,idx}))
+    .filter(x=>isPlayableCardTarget(x.c));
+
+  if(!choices.length) return -1;
+
+  choices.sort((a,b)=>valSafe(a.c)-valSafe(b.c));
+  return choices[0].idx;
+}
+
 
 function simulateRoundFromState(firstAction, rootIndex){
   const simPlayers = clonePlayersForSim();
@@ -1141,69 +1164,82 @@ function simulateRoundFromState(firstAction, rootIndex){
 }
 
 function mctsDecision(rootIndex){
-  const p = players[rootIndex];
+  try {
+    const p = players[rootIndex];
 
-  if(!p || p.busted || p.stayed){
+    if(!p || p.busted || p.stayed){
+      return {
+        rec: "STAY",
+        hitUtility: 0,
+        stayUtility: 0,
+        confidence: 0,
+        hitBustRate: 0,
+        note: "Player is not active."
+      };
+    }
+
+    if(p.hand.length === 0){
+      return {
+        rec: "HIT",
+        hitUtility: 0,
+        stayUtility: 0,
+        confidence: 100,
+        hitBustRate: 0,
+        note: "No cards yet. Hit to start."
+      };
+    }
+
+    if(version()==="vengeance" && p.hand.includes("Zero") && simUniqueNumberCount(p.hand) < 7){
+      return {
+        rec: "HIT",
+        hitUtility: 0,
+        stayUtility: 0,
+        confidence: 100,
+        hitBustRate: 0,
+        note: "Zero is active. Staying scores 0 unless you reach Flip 7."
+      };
+    }
+
+    const simulations = mode()==="digital" ? 300 : 200;
+
+    let hitSum = 0;
+    let staySum = 0;
+    let hitBusts = 0;
+
+    for(let i=0;i<simulations;i++){
+      const h = simulateRoundFromState("HIT", rootIndex);
+      const s = simulateRoundFromState("STAY", rootIndex);
+
+      hitSum += Number.isFinite(h.utility) ? h.utility : 0;
+      staySum += Number.isFinite(s.utility) ? s.utility : 0;
+
+      if(h.busted) hitBusts++;
+    }
+
+    const hitUtility = hitSum / simulations;
+    const stayUtility = staySum / simulations;
+    const diff = hitUtility - stayUtility;
+
     return {
-      rec: "STAY",
-      hitUtility: 0,
-      stayUtility: 0,
+      rec: diff > 0 ? "HIT" : "STAY",
+      hitUtility,
+      stayUtility,
+      confidence: Math.min(99, Math.round(Math.abs(diff) * 4)),
+      hitBustRate: (hitBusts / simulations) * 100,
+      note: "MCTS simulates future turns, opponent hands, actions, busts, and round score outcomes."
+    };
+  } catch(error) {
+    console.warn("MCTS failed; using basic EV fallback.", error);
+    const ev = evalPlayer(players[rootIndex]);
+    return {
+      rec: ev.rec,
+      hitUtility: ev.ev,
+      stayUtility: ev.current,
       confidence: 0,
-      hitBustRate: 0,
-      note: "Player is not active."
+      hitBustRate: ev.bust,
+      note: "MCTS fallback: using basic expected value because a simulation branch failed."
     };
   }
-
-  if(p.hand.length === 0){
-    return {
-      rec: "HIT",
-      hitUtility: 0,
-      stayUtility: 0,
-      confidence: 100,
-      hitBustRate: 0,
-      note: "No cards yet. Hit to start."
-    };
-  }
-
-  if(version()==="vengeance" && p.hand.includes("Zero") && simUniqueNumberCount(p.hand) < 7){
-    return {
-      rec: "HIT",
-      hitUtility: 0,
-      stayUtility: 0,
-      confidence: 100,
-      hitBustRate: 0,
-      note: "Zero is active. Staying scores 0 unless you reach Flip 7."
-    };
-  }
-
-  const simulations = mode()==="digital" ? 450 : 300;
-
-  let hitSum = 0;
-  let staySum = 0;
-  let hitBusts = 0;
-
-  for(let i=0;i<simulations;i++){
-    const h = simulateRoundFromState("HIT", rootIndex);
-    const s = simulateRoundFromState("STAY", rootIndex);
-
-    hitSum += h.utility;
-    staySum += s.utility;
-
-    if(h.busted) hitBusts++;
-  }
-
-  const hitUtility = hitSum / simulations;
-  const stayUtility = staySum / simulations;
-  const diff = hitUtility - stayUtility;
-
-  return {
-    rec: diff > 0 ? "HIT" : "STAY",
-    hitUtility,
-    stayUtility,
-    confidence: Math.min(99, Math.round(Math.abs(diff) * 4)),
-    hitBustRate: (hitBusts / simulations) * 100,
-    note: "MCTS simulates future turns, opponent hands, actions, busts, and round score outcomes."
-  };
 }
 
 function renderAdvice(){
@@ -1237,12 +1273,12 @@ function renderAdvice(){
   adviceBox.innerHTML=`
     <div class="advice-grid">
       <div class="advice-tile recommend ${mcts.rec==="HIT"?"hit":"stay"}">${mcts.rec}</div>
-      <div class="advice-tile mcts-tile"><span class="advice-label">MCTS hit value</span><span class="advice-value">${mcts.hitUtility.toFixed(1)}</span></div>
-      <div class="advice-tile mcts-tile"><span class="advice-label">MCTS stay value</span><span class="advice-value">${mcts.stayUtility.toFixed(1)}</span></div>
-      <div class="advice-tile"><span class="advice-label">Round score</span><span class="advice-value">${ev.current}</span></div>
-      <div class="advice-tile"><span class="advice-label">Bust chance</span><span class="advice-value">${ev.bust.toFixed(1)}%</span></div>
-      <div class="advice-tile"><span class="advice-label">Flip 7 chance</span><span class="advice-value">${ev.flip7.toFixed(1)}%</span></div>
-      <div class="advice-tile"><span class="advice-label">MCTS confidence</span><span class="advice-value">${mcts.confidence}%</span></div>
+      <div class="advice-tile mcts-tile" onclick="openMetricInfo('mctsHit')"><span class="advice-label">MCTS hit value</span><span class="advice-value">${mcts.hitUtility.toFixed(1)}</span></div>
+      <div class="advice-tile mcts-tile" onclick="openMetricInfo('mctsStay')"><span class="advice-label">MCTS stay value</span><span class="advice-value">${mcts.stayUtility.toFixed(1)}</span></div>
+      <div class="advice-tile" onclick="openMetricInfo('roundScore')"><span class="advice-label">Round score</span><span class="advice-value">${ev.current}</span></div>
+      <div class="advice-tile" onclick="openMetricInfo('bustChance')"><span class="advice-label">Bust chance</span><span class="advice-value">${ev.bust.toFixed(1)}%</span></div>
+      <div class="advice-tile" onclick="openMetricInfo('flip7Chance')"><span class="advice-label">Flip 7 chance</span><span class="advice-value">${ev.flip7.toFixed(1)}%</span></div>
+      <div class="advice-tile" onclick="openMetricInfo('confidence')"><span class="advice-label">MCTS confidence</span><span class="advice-value">${mcts.confidence}%</span></div>
       <div class="mcts-note">${mcts.note}</div>
     </div>
   `;
@@ -1325,7 +1361,7 @@ function openAction(card, owner){
   }
 
   if(card==="Flip Four"){
-    body.innerHTML+='<p>Choose any non-busted player. They draw up to 4 cards. Stop on bust or Flip 7.</p><div class="action-player-grid">';
+    body.innerHTML+='<p>Choose any non-busted player. They draw up to 4 cards automatically. Stop on bust or Flip 7.</p><div class="action-player-grid">';
     validActionTargets(card, owner).forEach(({p,i})=>{
       body.innerHTML+=actionChoiceButton(p, i, `multiDraw(${i},4)`);
     });
@@ -1422,41 +1458,48 @@ function justOneMore(target){
 }
 
 function multiDraw(target, n){
+  if(!canResolvePendingAction()){
+    alert("Only the action owner or host can resolve this action.");
+    return;
+  }
+
   closeActionModal();
 
   if(mode()==="digital"){
-    const owner = pending ? pending.owner : active;
-    const sourceAction = pending ? pending.card : null;
+    const sourceActionOwner = pending ? pending.owner : active;
+    const sourceActionCard = pending ? pending.card : null;
     const queuedActions = [];
 
-    for(let i=0;i<n;i++){
+    // Clear pending while resolving so receiveCard cannot reopen the same action repeatedly.
+    pending = null;
+
+    let draws = 0;
+
+    for(let i=0; i<n; i++){
       if(players[target].busted || hasFlip7(players[target])) break;
 
-      const c=drawRandomCard();
+      const c = drawRandomCard();
       if(!c) break;
 
-      log(`${players[target].name} forced draw: ${c}.`);
+      draws++;
+      log(`${players[target].name} forced draw ${draws}/${n}: ${c}.`);
 
-      const beforePending = pending;
-      receiveCard(target,c,{advance:false, suppressAction:true});
+      receiveCard(target, c, {advance:false, suppressAction:true});
 
       if(isAction(c) && !players[target].busted && !hasFlip7(players[target])){
-        queuedActions.push({card:c, owner:target});
+        queuedActions.push({card:c, owner:target, after:false});
       }
-
-      pending = beforePending;
 
       if(players[target].busted || hasFlip7(players[target])) break;
     }
 
-    if(sourceAction !== null){
-      discardActionCard(owner, sourceAction);
+    if(sourceActionCard !== null){
+      discardActionCard(sourceActionOwner, sourceActionCard);
     }
-
-    pending = null;
 
     if(players[target].busted || hasFlip7(players[target])){
       nextTurn();
+      update();
       return;
     }
 
@@ -1464,10 +1507,12 @@ function multiDraw(target, n){
       const nextAction = queuedActions.shift();
       pending = nextAction;
       openAction(nextAction.card, nextAction.owner);
+      update();
       return;
     }
 
     nextTurn();
+    update();
   } else {
     alert(`Tracker mode: manually enter up to ${n} cards for ${players[target].name}. Stop on bust or Flip 7.`);
   }
@@ -1606,3 +1651,5 @@ function doSwap(theirIdx){
 showSetup();
 document.getElementById("turnTitle").innerText = "Press Start Game";
 document.getElementById("turnDetails").innerHTML = "Choose setup options, then press Start Game.";
+
+Object.assign(window,{openMetricInfo, closeMetricInfo});

@@ -147,6 +147,16 @@ David</textarea>
   </div>
 </div>
 
+<div id="metricInfoModal" class="modal" onclick="closeMetricInfo()">
+  <div class="modal-content metric-info-card" onclick="event.stopPropagation()">
+    <h2 id="metricInfoTitle">Metric</h2>
+    <div id="metricInfoBody" class="display"></div>
+    <div class="compact-actions">
+      <button onclick="closeMetricInfo()">Close</button>
+    </div>
+  </div>
+</div>
+
 <div id="actionModal" class="modal">
   <div class="modal-content action-modal-content">
     <div class="action-modal-head">
