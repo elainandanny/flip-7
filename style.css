@@ -604,3 +604,17 @@
   font-family: monospace;
   white-space: pre-wrap;
 }
+
+
+#pendingActionButton {
+  display: block;
+  grid-column: 1 / -1;
+  background: #8338ec !important;
+  color: white !important;
+  animation: pulsePending 1s infinite alternate;
+}
+
+@keyframes pulsePending {
+  from { filter: brightness(1); }
+  to { filter: brightness(1.3); }
+}

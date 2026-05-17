@@ -237,6 +237,10 @@ function canResolvePendingAction(){
   return true;
 }
 
+function hasPendingAction(){
+  return !!(pending && pending.card);
+}
+
 
 function handHasDuplicateNumber(hand){
   const seen = new Set();
@@ -369,8 +373,8 @@ function wouldBust(hand, card){
 }
 
 function hitActive(){
-  if(pending && pending.card){
-    alert(`Resolve ${pending.card} before drawing another card.`);
+  if(hasPendingAction()){
+    alert(`Resolve ${pending.card} before anyone draws again.`);
     openAction(pending.card, pending.owner);
     return;
   }
@@ -474,8 +478,8 @@ function bustPlayer(i){
 }
 
 function stayActive(){
-  if(pending && pending.card){
-    alert(`Resolve ${pending.card} before staying or moving on.`);
+  if(hasPendingAction()){
+    alert(`Resolve ${pending.card} before staying.`);
     openAction(pending.card, pending.owner);
     return;
   }
@@ -1195,82 +1199,55 @@ function simulateRoundFromState(firstAction, rootIndex){
 }
 
 function mctsDecision(rootIndex){
-  try {
-    const p = players[rootIndex];
+  // Stable advisor: uses current EV/bust/F7 metrics.
+  // This avoids UI-breaking simulation crashes from action-card branches.
+  const p = players[rootIndex];
 
-    if(!p || p.busted || p.stayed){
-      return {
-        rec: "STAY",
-        hitUtility: 0,
-        stayUtility: 0,
-        confidence: 0,
-        hitBustRate: 0,
-        note: "Player is not active."
-      };
-    }
-
-    if(p.hand.length === 0){
-      return {
-        rec: "HIT",
-        hitUtility: 0,
-        stayUtility: 0,
-        confidence: 100,
-        hitBustRate: 0,
-        note: "No cards yet. Hit to start."
-      };
-    }
-
-    if(version()==="vengeance" && p.hand.includes("Zero") && simUniqueNumberCount(p.hand) < 7){
-      return {
-        rec: "HIT",
-        hitUtility: 0,
-        stayUtility: 0,
-        confidence: 100,
-        hitBustRate: 0,
-        note: "Zero is active. Staying scores 0 unless you reach Flip 7."
-      };
-    }
-
-    const simulations = mode()==="digital" ? 300 : 200;
-
-    let hitSum = 0;
-    let staySum = 0;
-    let hitBusts = 0;
-
-    for(let i=0;i<simulations;i++){
-      const h = simulateRoundFromState("HIT", rootIndex);
-      const s = simulateRoundFromState("STAY", rootIndex);
-
-      hitSum += Number.isFinite(h.utility) ? h.utility : 0;
-      staySum += Number.isFinite(s.utility) ? s.utility : 0;
-
-      if(h.busted) hitBusts++;
-    }
-
-    const hitUtility = hitSum / simulations;
-    const stayUtility = staySum / simulations;
-    const diff = hitUtility - stayUtility;
-
+  if(!p || p.busted || p.stayed){
     return {
-      rec: diff > 0 ? "HIT" : "STAY",
-      hitUtility,
-      stayUtility,
-      confidence: Math.min(99, Math.round(Math.abs(diff) * 4)),
-      hitBustRate: (hitBusts / simulations) * 100,
-      note: "MCTS simulates future turns, opponent hands, actions, busts, and round score outcomes."
-    };
-  } catch(error) {
-    console.warn("MCTS failed; using basic EV fallback.", error);
-    const ev = evalPlayer(players[rootIndex]);
-    return {
-      rec: ev.rec,
-      hitUtility: ev.ev,
-      stayUtility: ev.current,
+      rec: "STAY",
+      hitUtility: 0,
+      stayUtility: 0,
       confidence: 0,
-      hitBustRate: ev.bust,
-      note: "MCTS fallback: using basic expected value because a simulation branch failed."
+      hitBustRate: 0,
+      note: "Player is not active."
     };
   }
+
+  const ev = evalPlayer(p);
+
+  if(p.hand.length === 0){
+    return {
+      rec: "HIT",
+      hitUtility: 0,
+      stayUtility: 0,
+      confidence: 100,
+      hitBustRate: 0,
+      note: "No cards yet. Hit to start."
+    };
+  }
+
+  if(version()==="vengeance" && p.hand.includes("Zero") && uniqueNumberCount(p.hand) < 7){
+    return {
+      rec: "HIT",
+      hitUtility: ev.ev,
+      stayUtility: 0,
+      confidence: 100,
+      hitBustRate: ev.bust,
+      note: "Zero is active. Staying scores 0 unless you reach Flip 7."
+    };
+  }
+
+  const diff = ev.ev - ev.current;
+
+  return {
+    rec: diff > 0 ? "HIT" : "STAY",
+    hitUtility: ev.ev,
+    stayUtility: ev.current,
+    confidence: Math.min(99, Math.round(Math.abs(diff) * 5)),
+    hitBustRate: ev.bust,
+    note: "Stable advisor compares the expected value of hitting against the current stay score."
+  };
 }
 
 function renderAdvice(){
@@ -1467,73 +1444,77 @@ function discardActionAndContinue(){
 }
 
 function justOneMore(target){
-  closeActionModal();
-
-  if(mode()==="digital"){
-    const owner = pending ? pending.owner : active;
-    const sourceAction = pending ? pending.card : null;
-
-    const c=drawRandomCard();
-
-    if(c){
-      log(`${players[target].name} is forced to draw ${c}.`);
-
-      receiveCard(target,c,{advance:false, suppressAction:true});
-
-      if(sourceAction !== null){
-        discardActionCard(owner, sourceAction);
-      }
-
-      pending = null;
-
-      if(isAction(c) && !players[target].busted && !hasFlip7(players[target])){
-        pending = {card:c, owner:target, after:false};
-        openAction(c, target);
-        update();
-        return;
-      }
-    } else {
-      if(sourceAction !== null){
-        discardActionCard(owner, sourceAction);
-      }
-      pending = null;
-    }
-
-    if(!players[target].busted) players[target].stayed=true;
-
-    nextTurn();
-  } else {
-    alert("Tracker mode: tap the forced card in Enter Drawn Card, then mark the target stayed if needed.");
-  }
-}
-
-function multiDraw(target, n){
   if(!canResolvePendingAction()){
-    alert("Only the action owner or host can resolve this action.");
+    alert("Only the action owner can resolve this action.");
     return;
   }
 
   closeActionModal();
 
+  const sourceOwner = pending ? pending.owner : active;
+  const sourceCard = pending ? pending.card : "Just One More";
+
+  // Clear pending FIRST so the app does not reopen this same action.
+  pending = null;
+
   if(mode()==="digital"){
-    const sourceActionOwner = pending ? pending.owner : active;
-    const sourceActionCard = pending ? pending.card : null;
-    const queuedActions = [];
+    const c = drawRandomCard();
 
-    // Clear pending while resolving so receiveCard cannot reopen the same action repeatedly.
-    pending = null;
+    if(c){
+      log(`${players[target].name} is forced to draw ${c}.`);
+      receiveCard(target, c, {advance:false, suppressAction:true});
 
-    let draws = 0;
+      if(isAction(c) && !players[target].busted && !hasFlip7(players[target])){
+        // The forced player now has their own action to resolve after Just One More is discarded.
+        discardActionCard(sourceOwner, sourceCard);
+        pending = {card:c, owner:target, after:false};
+        openAction(c, target);
+        update();
+        return;
+      }
+    }
 
+    discardActionCard(sourceOwner, sourceCard);
+
+    if(!players[target].busted){
+      players[target].stayed = true;
+      log(`${players[target].name} is forced to stay after Just One More.`);
+    }
+
+    nextTurn();
+    update();
+    return;
+  }
+
+  alert("Tracker mode: enter the forced card for that player manually, then mark them stayed.");
+  discardActionCard(sourceOwner, sourceCard);
+  nextTurn();
+  update();
+}
+
+function multiDraw(target, n){
+  if(!canResolvePendingAction()){
+    alert("Only the action owner can resolve this action.");
+    return;
+  }
+
+  closeActionModal();
+
+  const sourceOwner = pending ? pending.owner : active;
+  const sourceCard = pending ? pending.card : null;
+  const queuedActions = [];
+
+  // Clear pending before drawing so repeated update/render cycles do not reopen the source action.
+  pending = null;
+
+  if(mode()==="digital"){
     for(let i=0; i<n; i++){
       if(players[target].busted || hasFlip7(players[target])) break;
 
       const c = drawRandomCard();
       if(!c) break;
 
-      draws++;
-      log(`${players[target].name} forced draw ${draws}/${n}: ${c}.`);
-
+      log(`${players[target].name} forced draw ${i+1}/${n}: ${c}.`);
       receiveCard(target, c, {advance:false, suppressAction:true});
 
       if(isAction(c) && !players[target].busted && !hasFlip7(players[target])){
@@ -1543,8 +1524,8 @@ function multiDraw(target, n){
       if(players[target].busted || hasFlip7(players[target])) break;
     }
 
-    if(sourceActionCard !== null){
-      discardActionCard(sourceActionOwner, sourceActionCard);
+    if(sourceCard){
+      discardActionCard(sourceOwner, sourceCard);
     }
 
     if(players[target].busted || hasFlip7(players[target])){
@@ -1554,18 +1535,23 @@ function multiDraw(target, n){
     }
 
     if(queuedActions.length){
-      const nextAction = queuedActions.shift();
-      pending = nextAction;
-      openAction(nextAction.card, nextAction.owner);
+      pending = queuedActions[0];
+      openAction(pending.card, pending.owner);
       update();
       return;
     }
 
     nextTurn();
     update();
-  } else {
-    alert(`Tracker mode: manually enter up to ${n} cards for ${players[target].name}. Stop on bust or Flip 7.`);
+    return;
   }
+
+  alert(`Tracker mode: manually enter up to ${n} cards for ${players[target].name}. Stop on bust or Flip 7.`);
+  if(sourceCard){
+    discardActionCard(sourceOwner, sourceCard);
+  }
+  nextTurn();
+  update();
 }
 
 function chooseCard(kind,target){
