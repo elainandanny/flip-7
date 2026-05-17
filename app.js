@@ -1301,6 +1301,48 @@ function simulateRoundFromState(firstAction, rootIndex){
   };
 }
 
+
+function buildDynamicReason(ev, mcts, player){
+  const rec = mcts.rec;
+  const hit = mcts.hitUtility;
+  const stay = mcts.stayUtility;
+  const diff = hit - stay;
+  const absDiff = Math.abs(diff).toFixed(1);
+  const bust = ev.bust.toFixed(1);
+  const f7 = ev.flip7.toFixed(1);
+  const round = ev.current;
+
+  if(version()==="vengeance" && player.hand.includes("Zero") && uniqueNumberCount(player.hand) < 7){
+    return `HIT because Zero is active. Staying would score 0 unless you complete Flip 7. Your Flip 7 chance is about ${f7}%.`;
+  }
+
+  if(player.hand.length === 0){
+    return "HIT because you have no cards yet.";
+  }
+
+  if(rec === "HIT"){
+    if(ev.bust >= 25){
+      return `HIT, but it is risky. Hit value (${hit.toFixed(1)}) is still higher than staying at ${round}, even with a ${bust}% bust chance.`;
+    }
+
+    if(ev.flip7 >= 20){
+      return `HIT because the upside is strong. Hit value (${hit.toFixed(1)}) beats stay value (${stay.toFixed(1)}), and your Flip 7 chance is about ${f7}%.`;
+    }
+
+    return `HIT because the expected hit value (${hit.toFixed(1)}) is ${absDiff} points better than staying (${stay.toFixed(1)}). Bust chance is ${bust}%.`;
+  }
+
+  if(ev.bust >= 20){
+    return `STAY because bust risk is high. Staying keeps ${round} points, while hitting has a ${bust}% bust chance.`;
+  }
+
+  if(diff < 0){
+    return `STAY because staying is worth more right now. Stay value (${stay.toFixed(1)}) is ${absDiff} points better than hit value (${hit.toFixed(1)}).`;
+  }
+
+  return `STAY because hitting does not improve your expected value enough. Current round score is ${round}, bust chance is ${bust}%.`;
+}
+
 function mctsDecision(rootIndex){
   // Stable advisor: uses current EV/bust/F7 metrics.
   // This avoids UI-breaking simulation crashes from action-card branches.
@@ -1349,7 +1391,7 @@ function mctsDecision(rootIndex){
     stayUtility: ev.current,
     confidence: Math.min(99, Math.round(Math.abs(diff) * 5)),
     hitBustRate: ev.bust,
-    note: "Stable advisor compares the expected value of hitting against the current stay score."
+    note: "dynamic"
   };
 }
 
@@ -1464,7 +1506,7 @@ function renderAdvice(){
       <div class="advice-tile" onclick="openMetricInfo('bustChance')"><span class="advice-label">Bust chance</span><span class="advice-value">${ev.bust.toFixed(1)}%</span></div>
       <div class="advice-tile" onclick="openMetricInfo('flip7Chance')"><span class="advice-label">Flip 7 chance</span><span class="advice-value">${ev.flip7.toFixed(1)}%</span></div>
       <div class="advice-tile" onclick="openMetricInfo('confidence')"><span class="advice-label">MCTS confidence</span><span class="advice-value">${mcts.confidence}%</span></div>
-      <div class="mcts-note">${mcts.note}</div>
+      <div class="mcts-note">${buildDynamicReason(ev, mcts, p)}</div>
     </div>
   `;
 
@@ -1740,7 +1782,7 @@ function chooseCard(kind,target){
 
   players[target].hand.forEach((card,idx)=>{
     if(!isPlayableCardTarget(card)) return;
-    body.innerHTML+=`<button class="choice" onclick="confirmCardAction('${kind}',${target},${idx})">${cardImageHtml(card,false,true)}<br>${card}</button>`;
+    body.innerHTML+=`<button class="choice" data-card-name="${card}" onclick="confirmCardAction('${kind}',${target},${idx})">${cardImageHtml(card,false,true)}</button>`;
   });
 
   body.innerHTML += `</div><button class="action-back" onclick="openAction(pending.card,pending.owner)">Choose different player</button>`;
@@ -1790,7 +1832,7 @@ function chooseSwapMine(target){
 
   players[pending.owner].hand.forEach((card,idx)=>{
     if(!isPlayableCardTarget(card)) return;
-    body.innerHTML+=`<button class="choice" onclick="chooseSwapTheirs(${idx})">${cardImageHtml(card,false,true)}<br>${card}</button>`;
+    body.innerHTML+=`<button class="choice" data-card-name="${card}" onclick="chooseSwapTheirs(${idx})">${cardImageHtml(card,false,true)}</button>`;
   });
   body.innerHTML += `</div><button class="action-back" onclick="openAction(pending.card,pending.owner)">Choose different player</button>`;
 }
@@ -1805,7 +1847,7 @@ function chooseSwapTheirs(myIdx){
 
   players[target].hand.forEach((card,idx)=>{
     if(!isPlayableCardTarget(card)) return;
-    body.innerHTML+=`<button class="choice" onclick="confirmSwap(${idx})">${cardImageHtml(card,false,true)}<br>${card}</button>`;
+    body.innerHTML+=`<button class="choice" data-card-name="${card}" onclick="confirmSwap(${idx})">${cardImageHtml(card,false,true)}</button>`;
   });
   body.innerHTML += `</div><button class="action-back" onclick="chooseSwapMine(${target})">Back to your cards</button><button class="action-back" onclick="openAction(pending.card,pending.owner)">Choose different player</button>`;
 }

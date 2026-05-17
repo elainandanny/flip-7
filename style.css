@@ -725,3 +725,55 @@
     height: 82px !important;
   }
 }
+
+
+/* Force steal/discard/swap card picker to true 3-across layout */
+.action-card-choice-grid {
+  display: grid !important;
+  grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+  gap: 8px !important;
+  align-items: stretch !important;
+}
+
+.action-card-choice-grid .choice,
+.action-card-choice-grid button.choice {
+  width: 100% !important;
+  min-height: 132px !important;
+  padding: 8px !important;
+  margin: 0 !important;
+  text-align: center !important;
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: center !important;
+  justify-content: center !important;
+  border-radius: 10px !important;
+}
+
+.action-card-choice-grid .card-img-wrap {
+  width: 58px !important;
+  height: 82px !important;
+  margin: 0 auto 6px !important;
+  flex: 0 0 auto !important;
+}
+
+.action-card-choice-grid .choice br {
+  display: none !important;
+}
+
+.action-card-choice-grid .choice::after {
+  content: attr(data-card-name);
+  font-size: 13px;
+  font-weight: 900;
+  margin-top: 4px;
+}
+
+@media(min-width:700px){
+  .action-card-choice-grid .card-img-wrap {
+    width: 70px !important;
+    height: 98px !important;
+  }
+  .action-card-choice-grid .choice,
+  .action-card-choice-grid button.choice {
+    min-height: 148px !important;
+  }
+}
