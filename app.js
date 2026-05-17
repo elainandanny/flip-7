@@ -233,6 +233,11 @@ function toggleInfo(id){
   if(el) el.classList.toggle("hidden");
 }
 
+function canResolvePendingAction(){
+  return true;
+}
+
+
 function handHasDuplicateNumber(hand){
   const seen = new Set();
   for(const c of hand){
@@ -956,7 +961,7 @@ function simPolicyShouldHit(player, deck){
 }
 
 function simResolveActionApprox(simPlayers, actorIndex, card, deck){
-  const actor = simPlayers[actorIndex];
+  const actor = simPlayers?.[actorIndex];
   if(!actor) return;
 
   if(card==="Freeze"){
@@ -966,20 +971,18 @@ function simResolveActionApprox(simPlayers, actorIndex, card, deck){
 
   const alive = simPlayers
     .map((p,i)=>({p,i}))
-    .filter(x => !x.p.busted);
+    .filter(x=>x.p && !x.p.busted);
 
-  const candidatesWithCards = alive
-    .filter(x => x.p.hand.some(isPlayableCardTarget));
-
-  const opponentsWithCards = candidatesWithCards
-    .filter(x => x.i !== actorIndex);
+  const withTargets = alive.filter(x => Array.isArray(x.p.hand) && x.p.hand.some(isPlayableCardTarget));
+  const opponents = withTargets.filter(x => x.i !== actorIndex);
 
   if(card==="Steal"){
-    if(!opponentsWithCards.length) return;
+    if(!opponents.length) return;
 
-    opponentsWithCards.sort((a,b)=>simScore(b.p.hand)-simScore(a.p.hand));
-    const target = opponentsWithCards[0].p;
-    const idx = bestTargetCardIndex(target.hand);
+    opponents.sort((a,b)=>simScore(b.p.hand)-simScore(a.p.hand));
+
+    const target = opponents[0].p;
+    const idx = safeBestIndex(target.hand);
 
     if(idx < 0) return;
 
@@ -989,11 +992,12 @@ function simResolveActionApprox(simPlayers, actorIndex, card, deck){
   }
 
   if(card==="Discard"){
-    if(!candidatesWithCards.length) return;
+    if(!withTargets.length) return;
 
-    candidatesWithCards.sort((a,b)=>simScore(b.p.hand)-simScore(a.p.hand));
-    const target = candidatesWithCards[0].p;
-    const idx = bestTargetCardIndex(target.hand);
+    withTargets.sort((a,b)=>simScore(b.p.hand)-simScore(a.p.hand));
+
+    const target = withTargets[0].p;
+    const idx = safeBestIndex(target.hand);
 
     if(idx < 0) return;
 
@@ -1002,14 +1006,14 @@ function simResolveActionApprox(simPlayers, actorIndex, card, deck){
   }
 
   if(card==="Swap"){
-    if(!actor.hand.some(isPlayableCardTarget)) return;
-    if(!opponentsWithCards.length) return;
+    if(!Array.isArray(actor.hand) || !actor.hand.some(isPlayableCardTarget)) return;
+    if(!opponents.length) return;
 
-    opponentsWithCards.sort((a,b)=>simScore(b.p.hand)-simScore(a.p.hand));
-    const target = opponentsWithCards[0].p;
+    opponents.sort((a,b)=>simScore(b.p.hand)-simScore(a.p.hand));
 
-    const actorIdx = worstTargetCardIndex(actor.hand);
-    const targetIdx = bestTargetCardIndex(target.hand);
+    const target = opponents[0].p;
+    const actorIdx = safeWorstIndex(actor.hand);
+    const targetIdx = safeBestIndex(target.hand);
 
     if(actorIdx < 0 || targetIdx < 0) return;
 
@@ -1054,6 +1058,33 @@ function valSafe(card){
   if(!isNumber(card)) return 0;
   return val(card);
 }
+
+function safeBestIndex(hand){
+  if(!Array.isArray(hand)) return -1;
+
+  const choices = hand
+    .map((c,idx)=>({c,idx}))
+    .filter(x=>isPlayableCardTarget(x.c));
+
+  if(!choices.length) return -1;
+
+  choices.sort((a,b)=>valSafe(b.c)-valSafe(a.c));
+  return choices[0].idx;
+}
+
+function safeWorstIndex(hand){
+  if(!Array.isArray(hand)) return -1;
+
+  const choices = hand
+    .map((c,idx)=>({c,idx}))
+    .filter(x=>isPlayableCardTarget(x.c));
+
+  if(!choices.length) return -1;
+
+  choices.sort((a,b)=>valSafe(a.c)-valSafe(b.c));
+  return choices[0].idx;
+}
+
 
 function bestTargetCardIndex(hand){
   const choices = hand
@@ -1243,6 +1274,7 @@ function mctsDecision(rootIndex){
 }
 
 function renderAdvice(){
+  try {
   const p=players[active];
 
   if(!p){
@@ -1284,6 +1316,24 @@ function renderAdvice(){
   `;
 
   odds.innerHTML=``;
+
+  } catch(error) {
+    console.warn("renderAdvice failed; showing fallback.", error);
+    const p = players[active];
+    document.getElementById("turnTitle").innerText = p ? `Round ${round}: ${p.name}'s turn` : "Start a game";
+    const adviceBox = document.getElementById("adviceBox");
+    const odds = document.getElementById("oddsBox");
+    const corner = document.getElementById("cornerRecommend");
+    if(corner){
+      corner.style.display = "block";
+      corner.innerText = "HIT";
+      corner.className = "corner-recommend hit";
+    }
+    if(adviceBox){
+      adviceBox.innerHTML = `<div class="turn-banner">Advice fallback active. Continue playing.</div>`;
+    }
+    if(odds) odds.innerHTML = "";
+  }
 }
 
 function renderDiscard(){
@@ -1652,4 +1702,5 @@ showSetup();
 document.getElementById("turnTitle").innerText = "Press Start Game";
 document.getElementById("turnDetails").innerHTML = "Choose setup options, then press Start Game.";
 
-Object.assign(window,{openMetricInfo, closeMetricInfo});
+Object.assign(window,{openMetricInfo, closeMetricInfo, canResolvePendingAction, toggleInfo
+});
