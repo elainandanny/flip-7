@@ -105,6 +105,10 @@ function startGame(){
 }
 
 function showSetup(){
+  const gameOverModal = document.getElementById("gameOverModal");
+  if(gameOverModal) gameOverModal.style.display = "none";
+  gameOver = false;
+
   document.getElementById("setupCard").classList.remove("hidden");
   document.getElementById("gameMenu").classList.add("hidden");
 }
@@ -231,6 +235,23 @@ function actionChoiceButton(player, index, onclick){
     ${actionHandImages(player)}
   </button>`;
 }
+
+function actionOwnerHandPreview(owner){
+  const p = players[owner];
+  if(!p) return "";
+
+  const cards = p.hand.length
+    ? p.hand.map(c=>cardImageHtml(c,false,true)).join("")
+    : '<span class="small">No cards</span>';
+
+  return `
+    <div class="action-owner-hand">
+      <div class="action-owner-hand-title">${p.name}'s cards</div>
+      <div class="round-review-hand">${cards}</div>
+    </div>
+  `;
+}
+
 
 function toggleInfo(id){
   const el = document.getElementById(id);
@@ -612,6 +633,26 @@ function checkGameOver(){
   update();
 
   return true;
+}
+
+
+function startNewGameFromGameOver(){
+  const modal = document.getElementById("gameOverModal");
+  if(modal) modal.style.display = "none";
+
+  gameOver = false;
+  gameStarted = false;
+  pending = null;
+  pendingRoundEnd = null;
+  players = [];
+  active = 0;
+  dealer = 0;
+  discard = [];
+  round = 1;
+  logLines = [];
+
+  showSetup();
+  update();
 }
 
 function closeGameOverModal(){
@@ -1499,6 +1540,8 @@ function openAction(card, owner){
     return;
   }
 
+  body.innerHTML += actionOwnerHandPreview(owner);
+
   if(card==="Freeze"){
     players[owner].stayed=true;
     log(`${players[owner].name} is frozen/stays.`);
@@ -1824,9 +1867,11 @@ showSetup();
 document.getElementById("turnTitle").innerText = "Press Start Game";
 document.getElementById("turnDetails").innerHTML = "Choose setup options, then press Start Game.";
 
-Object.assign(window,{openMetricInfo, closeMetricInfo, canResolvePendingAction, toggleInfo, updateCornerRecommendation, closeGameOverModal, checkGameOver
+Object.assign(window,{openMetricInfo, closeMetricInfo, canResolvePendingAction, toggleInfo, updateCornerRecommendation, closeGameOverModal, checkGameOver, startNewGameFromGameOver
 });
 
 
 window.openMetricInfo = openMetricInfo;
 window.closeMetricInfo = closeMetricInfo;
+
+window.startNewGameFromGameOver = startNewGameFromGameOver;

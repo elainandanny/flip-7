@@ -46,8 +46,8 @@
 
       <label>Mode</label>
       <select id="playMode" onchange="update()">
+        <option value="digital" selected>Play Game</option>
         <option value="tracker">Tracker</option>
-        <option value="digital">Play Game</option>
       </select>
 
       <label>Show odds/advice in digital play?</label>
@@ -165,7 +165,7 @@ David</textarea>
     <h2 id="gameOverTitle">Game Over</h2>
     <div id="gameOverBody" class="display"></div>
     <div class="compact-actions">
-      <button class="green" onclick="showSetup()">New Game</button>
+      <button class="green" onclick="startNewGameFromGameOver()">New Game</button>
       <button onclick="closeGameOverModal()">Review Board</button>
     </div>
   </div>
