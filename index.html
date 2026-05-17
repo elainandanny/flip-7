@@ -2,719 +2,638 @@
 <html>
 <head>
   <meta charset="UTF-8" />
-  <title>Flip 7 Advisor</title>
+  <title>Flip 7 Game Advisor</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-
   <style>
-    body {
-      font-family: Arial, sans-serif;
-      background: #111;
-      color: white;
-      margin: 0;
-      padding: 16px;
+    :root {
+      --bg:#101114; --panel:#1d1f25; --muted:#a9afbd; --text:#fff;
+      --green:#087a28; --red:#a11224; --yellow:#f2c94c; --blue:#0b5cad;
+      --border:#333844;
     }
-
-    h1, h2 {
-      margin-bottom: 8px;
-    }
-
-    .small {
-      font-size: 14px;
-      opacity: 0.8;
-      line-height: 1.4;
-    }
-
-    .section {
-      margin-top: 24px;
-    }
-
-    .cards {
-      display: grid;
-      grid-template-columns: repeat(4, 1fr);
-      gap: 10px;
-      margin-top: 10px;
-    }
-
-    button, select {
-      padding: 12px;
-      font-size: 15px;
-      border: none;
-      border-radius: 10px;
-      cursor: pointer;
-    }
-
-    select {
-      width: 100%;
-      background: #222;
-      color: white;
-    }
-
-    button:active {
-      transform: scale(0.98);
-    }
-
-    .card-btn {
-      min-height: 62px;
-      font-weight: bold;
-      border: 2px solid #333;
-      white-space: pre-line;
-    }
-
-    .full {
-      background: white;
-      color: black;
-    }
-
-    .none {
-      background: black;
-      color: white;
-      border: 2px solid #555;
-    }
-
-    .low {
-      background: #b00020;
-      color: white;
-    }
-
-    .medium {
-      background: #f2c94c;
-      color: black;
-    }
-
-    .high {
-      background: #087a28;
-      color: white;
-    }
-
-    .display, .stats, .deck {
-      background: #222;
-      padding: 12px;
-      border-radius: 10px;
-      margin-top: 10px;
-      line-height: 1.6;
-    }
-
-    .result {
-      margin-top: 24px;
-      padding: 18px;
-      border-radius: 12px;
-      text-align: center;
-      font-size: 30px;
-      font-weight: bold;
-    }
-
-    .hit {
-      background: #087a28;
-    }
-
-    .stay {
-      background: #8b0000;
-    }
-
-    .row {
-      display: flex;
-      gap: 10px;
-      margin-top: 10px;
-    }
-
-    .row button {
-      flex: 1;
-      background: #222;
-      color: white;
-    }
-
-    .danger {
-      background: #8b0000 !important;
-    }
-
-    .shuffle {
-      background: #064f8f !important;
-    }
-
-    .warning {
-      color: #f2c94c;
-      font-size: 14px;
-      margin-top: 8px;
-    }
+    * { box-sizing: border-box; }
+    body { font-family: Arial, sans-serif; background: var(--bg); color: var(--text); margin:0; padding:14px; }
+    h1,h2,h3 { margin: 10px 0; }
+    .small { color: var(--muted); font-size: 14px; line-height: 1.4; }
+    .section, .player-card, .panel { background: var(--panel); border-radius: 14px; padding: 12px; margin-top: 14px; }
+    select, input, button { border:0; border-radius: 10px; padding: 12px; font-size:16px; }
+    select, input { width:100%; background:#292c35; color:white; }
+    button { background:#2b2f3a; color:white; cursor:pointer; font-weight:700; }
+    button:active { transform: scale(.98); }
+    .row { display:flex; gap:10px; align-items:center; margin-top:10px; }
+    .row > * { flex:1; }
+    .cards { display:grid; grid-template-columns: repeat(4,1fr); gap:8px; margin-top:10px; }
+    .card-btn { min-height:62px; white-space:pre-line; border:2px solid var(--border); }
+    .full { background:white; color:black; }
+    .none { background:black; color:white; border-color:#555; }
+    .low { background:var(--red); color:white; }
+    .medium { background:var(--yellow); color:black; }
+    .high { background:var(--green); color:white; }
+    .active { outline:3px solid var(--yellow); }
+    .stayed { opacity:.75; border:2px solid var(--green); }
+    .busted { opacity:.65; border:2px solid var(--red); }
+    .result { text-align:center; font-size:30px; font-weight:900; padding:16px; border-radius:14px; margin-top:14px; }
+    .hit { background:var(--green); }
+    .stay { background:var(--red); }
+    .blue { background:var(--blue)!important; }
+    .danger { background:var(--red)!important; }
+    .green { background:var(--green)!important; }
+    .yellow { background:var(--yellow)!important; color:black!important; }
+    .display { background:#111319; border:1px solid var(--border); border-radius:10px; padding:10px; min-height:40px; line-height:1.5; }
+    .players { display:grid; grid-template-columns: 1fr; gap:10px; margin-top:10px; }
+    .pill { display:inline-block; padding:4px 8px; border-radius:999px; background:#303542; margin:2px; }
+    .modal { position:fixed; inset:0; background:rgba(0,0,0,.75); display:none; align-items:center; justify-content:center; padding:14px; z-index:99; }
+    .modal-content { background:#1d1f25; max-width:720px; width:100%; max-height:90vh; overflow:auto; border-radius:14px; padding:14px; border:1px solid #444; }
+    .hidden { display:none; }
+    .stat-grid { display:grid; grid-template-columns: repeat(2,1fr); gap:8px; }
+    .stat { background:#111319; border:1px solid var(--border); border-radius:10px; padding:10px; }
+    @media (min-width: 760px) { .players { grid-template-columns: repeat(2,1fr); } .cards { grid-template-columns: repeat(6,1fr); } }
   </style>
 </head>
-
 <body>
-
-<h1>🃏 Flip 7 Advisor</h1>
-<div class="small">
-  Choose your version. Tap cards as they appear. Reset Round moves cards to discard. Shuffle Discard returns discarded cards to the deck.
-</div>
+<h1>🃏 Flip 7 Game Advisor</h1>
+<div class="small">Turn-based tracker for Original Flip 7 and Flip 7: With a Vengeance. Pick players, flip through turns, enter drawn cards, resolve actions, and see hit/stay odds.</div>
 
 <div class="section">
-  <h2>Game Version</h2>
-  <select id="gameVersion" onchange="changeVersion()">
+  <h2>Setup</h2>
+  <label>Game version</label>
+  <select id="gameVersion" onchange="newGame()">
     <option value="classic">Original Flip 7</option>
     <option value="vengeance">Flip 7: With a Vengeance</option>
   </select>
-</div>
 
-<div class="section">
-  <label>Risk Mode:</label>
-  <select id="riskMode" onchange="update()">
-    <option>Conservative</option>
-    <option selected>Normal</option>
-    <option>Aggressive</option>
-  </select>
-</div>
-
-<div class="section">
-  <h2>Your Cards</h2>
-  <div class="display" id="myCards"></div>
-  <div class="cards" id="myButtons"></div>
   <div class="row">
-    <button onclick="undoMy()">Undo My Card</button>
+    <div>
+      <label>Players</label>
+      <input id="playerCount" type="number" min="1" max="10" value="3" />
+    </div>
+    <button class="blue" onclick="newGame()">Start / Reset Game</button>
   </div>
 </div>
 
 <div class="section">
-  <h2>Visible Cards This Round</h2>
-  <div class="display" id="visibleCards"></div>
-  <div class="cards" id="visibleButtons"></div>
+  <h2>Current Turn</h2>
+  <div id="turnInfo" class="display"></div>
+  <div id="advice" class="result"></div>
+  <div id="odds" class="stat-grid"></div>
+
   <div class="row">
-    <button onclick="undoVisible()">Undo Visible Card</button>
+    <button class="green" onclick="openDrawModal('self', activePlayerIndex)">HIT / Enter Card</button>
+    <button class="yellow" onclick="stayActive()">STAY</button>
   </div>
-</div>
-
-<div class="section" id="classicSecondChanceSection">
-  <label>
-    <input type="checkbox" id="secondChance" onchange="update()">
-    I Have Second Chance
-  </label>
-</div>
-
-<div id="result" class="result"></div>
-<div id="stats" class="stats"></div>
-
-<div class="section">
-  <h2>Discard Pile</h2>
-  <div class="display" id="discardPile"></div>
-
   <div class="row">
-    <button class="danger" onclick="resetRound()">Reset Round → Move to Discard</button>
-  </div>
-
-  <div class="row">
-    <button class="shuffle" onclick="shuffleDiscardBack()">Shuffle Discard Back Into Deck</button>
+    <button onclick="nextTurn()">Skip to Next Active Player</button>
+    <button class="danger" onclick="endRound()">End Round / Score</button>
   </div>
 </div>
 
 <div class="section">
-  <h2>Cards Left in Deck</h2>
-  <div class="deck" id="deckList"></div>
+  <h2>Players</h2>
+  <div id="players" class="players"></div>
+</div>
+
+<div class="section">
+  <h2>Discard + Deck</h2>
+  <div class="row">
+    <button onclick="resetRoundOnly()">Reset Round → Move Round Cards to Discard</button>
+    <button class="blue" onclick="shuffleDiscardBack()">Shuffle Discard Back Into Deck</button>
+  </div>
+  <h3>Discard Pile</h3>
+  <div id="discardPile" class="display"></div>
+  <h3>Cards Left in Deck</h3>
+  <div id="deckList" class="display"></div>
+</div>
+
+<div id="drawModal" class="modal">
+  <div class="modal-content">
+    <h2 id="drawTitle">Enter Drawn Card</h2>
+    <div class="small">Buttons show remaining count. White = full, black = none, red = low, yellow = medium, green = high.</div>
+    <div id="drawButtons" class="cards"></div>
+    <div class="row">
+      <button onclick="closeModal()">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<div id="actionModal" class="modal">
+  <div class="modal-content">
+    <h2 id="actionTitle">Resolve Action</h2>
+    <div id="actionBody"></div>
+    <div class="row">
+      <button onclick="discardPendingAction()">Discard Action / No Valid Target</button>
+      <button onclick="closeActionModal()">Close</button>
+    </div>
+  </div>
 </div>
 
 <script>
-const classicConfig = {
-  cards: [
-    "0","1","2","3","4","5","6","7","8","9","10","11","12",
-    "+2","+4","+6","+8","+10","x2",
-    "Second Chance","Freeze","Flip Three"
-  ],
-  counts: {
-    "0":1,
-    "1":1,
-    "2":2,
-    "3":3,
-    "4":4,
-    "5":5,
-    "6":6,
-    "7":7,
-    "8":8,
-    "9":9,
-    "10":10,
-    "11":11,
-    "12":12,
-    "+2":1,
-    "+4":1,
-    "+6":1,
-    "+8":1,
-    "+10":1,
-    "x2":1,
-    "Second Chance":3,
-    "Freeze":3,
-    "Flip Three":3
+const CONFIGS = {
+  classic: {
+    name: "Original Flip 7",
+    cards: ["0","1","2","3","4","5","6","7","8","9","10","11","12","+2","+4","+6","+8","+10","x2","Second Chance","Freeze","Flip Three"],
+    counts: {"0":1,"1":1,"2":2,"3":3,"4":4,"5":5,"6":6,"7":7,"8":8,"9":9,"10":10,"11":11,"12":12,"+2":1,"+4":1,"+6":1,"+8":1,"+10":1,"x2":1,"Second Chance":3,"Freeze":3,"Flip Three":3},
+    actions: ["Freeze","Flip Three"],
+    modifiers: ["+2","+4","+6","+8","+10","x2"],
+    special: ["Second Chance"]
+  },
+  vengeance: {
+    name: "Flip 7: With a Vengeance",
+    cards: ["1","2","3","4","5","6","7","8","9","10","11","12","13","Zero","Unlucky 7","Lucky 13","-2","-4","-6","-8","-10","÷2","Just One More","Flip Four","Swap","Steal","Discard"],
+    counts: {"1":1,"2":2,"3":3,"4":4,"5":5,"6":6,"7":6,"8":8,"9":9,"10":10,"11":11,"12":12,"13":12,"Zero":1,"Unlucky 7":1,"Lucky 13":1,"-2":1,"-4":1,"-6":1,"-8":1,"-10":1,"÷2":1,"Just One More":2,"Flip Four":2,"Swap":2,"Steal":2,"Discard":2},
+    actions: ["Just One More","Flip Four","Swap","Steal","Discard"],
+    modifiers: ["-2","-4","-6","-8","-10","÷2"],
+    special: ["Zero","Unlucky 7","Lucky 13"]
   }
 };
 
-const vengeanceConfig = {
-  cards: [
-    "1","2","3","4","5","6","7","8","9","10","11","12","13",
-    "Zero","Unlucky 7","Lucky 13",
-    "-2","-4","-6","-8","-10","÷2",
-    "Just One More","Flip Four","Swap","Steal","Discard"
-  ],
-  counts: {
-    "1":1,
-    "2":2,
-    "3":3,
-    "4":4,
-    "5":5,
-    "6":6,
-    "7":6,
-    "8":8,
-    "9":9,
-    "10":10,
-    "11":11,
-    "12":12,
-    "13":12,
-    "Zero":1,
-    "Unlucky 7":1,
-    "Lucky 13":1,
-    "-2":1,
-    "-4":1,
-    "-6":1,
-    "-8":1,
-    "-10":1,
-    "÷2":1,
-    "Just One More":2,
-    "Flip Four":2,
-    "Swap":2,
-    "Steal":2,
-    "Discard":2
-  }
-};
-
-let myCards = [];
-let visibleCards = [];
+let players = [];
+let activePlayerIndex = 0;
 let discardPile = [];
+let pendingAction = null;
 
-function getVersion() {
-  return document.getElementById("gameVersion").value;
-}
+function cfg(){ return CONFIGS[document.getElementById("gameVersion").value]; }
+function version(){ return document.getElementById("gameVersion").value; }
 
-function getConfig() {
-  return getVersion() === "vengeance" ? vengeanceConfig : classicConfig;
-}
-
-function isNumberCard(card) {
-  if (getVersion() === "vengeance") {
-    return (
-      !isNaN(card) ||
-      card === "Zero" ||
-      card === "Unlucky 7" ||
-      card === "Lucky 13"
-    );
+function newGame(){
+  const n = Math.max(1, Math.min(10, Number(document.getElementById("playerCount").value || 3)));
+  players = [];
+  for(let i=0;i<n;i++){
+    players.push({name:`Player ${i+1}`, hand:[], stayed:false, busted:false, score:0});
   }
-
-  return !isNaN(card);
+  activePlayerIndex = 0;
+  discardPile = [];
+  pendingAction = null;
+  update();
 }
 
-function numberValue(card) {
-  if (card === "Zero") return 0;
-  if (card === "Unlucky 7") return 7;
-  if (card === "Lucky 13") return 13;
-  return Number(card);
-}
+function fullDeck(){ return {...cfg().counts}; }
 
-function numberIdentity(card) {
-  if (card === "Zero") return "0";
-  if (card === "Unlucky 7") return "7";
-  if (card === "Lucky 13") return "13L";
-  return String(card);
-}
-
-function fullDeck() {
-  return {...getConfig().counts};
-}
-
-function getCurrentDeck() {
-  let deck = fullDeck();
-
-  [...myCards, ...visibleCards, ...discardPile].forEach(card => {
-    if (deck[card] > 0) {
-      deck[card]--;
-    }
-  });
-
-  if (
-    getVersion() === "classic" &&
-    document.getElementById("secondChance").checked &&
-    deck["Second Chance"] > 0
-  ) {
-    deck["Second Chance"]--;
-  }
-
+function getDeck(){
+  const deck = fullDeck();
+  const allInPlay = [...discardPile];
+  players.forEach(p => allInPlay.push(...p.hand));
+  allInPlay.forEach(card => { if(deck[card] > 0) deck[card]--; });
   return deck;
 }
 
-function cleanVengeanceHand(cards) {
-  if (!cards.includes("Unlucky 7")) return cards;
+function cardsText(cards){
+  if(!cards.length) return "None";
+  const c = {};
+  cards.forEach(x => c[x] = (c[x] || 0) + 1);
+  return Object.entries(c).map(([k,v]) => `<span class="pill">${k} × ${v}</span>`).join(" ");
+}
 
+function isNumber(card){
+  if(version()==="vengeance") return !isNaN(card) || ["Zero","Unlucky 7","Lucky 13"].includes(card);
+  return !isNaN(card);
+}
+
+function identity(card){
+  if(card==="Zero") return "0";
+  if(card==="Unlucky 7") return "7";
+  if(card==="Lucky 13") return "13L";
+  return String(card);
+}
+
+function value(card){
+  if(card==="Zero") return 0;
+  if(card==="Unlucky 7") return 7;
+  if(card==="Lucky 13") return 13;
+  return Number(card);
+}
+
+function cleanVengeanceHand(cards){
+  if(!cards.includes("Unlucky 7")) return cards;
   return cards.filter(card => {
-    if (card === "Unlucky 7") return true;
-    if (card === "Lucky 13") return false;
-    if (card === "Zero") return false;
-    if (!isNaN(card)) return false;
-    if (["-2","-4","-6","-8","-10","÷2"].includes(card)) return false;
+    if(card==="Unlucky 7") return true;
+    if(card==="Lucky 13" || card==="Zero") return false;
+    if(!isNaN(card)) return false;
+    if(cfg().modifiers.includes(card)) return false;
     return true;
   });
 }
 
-function score(cards) {
-  const version = getVersion();
+function scoreHand(cards){
+  let hand = version()==="vengeance" ? cleanVengeanceHand(cards) : [...cards];
+  const nums = hand.filter(isNumber);
+  let total = nums.map(value).reduce((a,b)=>a+b,0);
+  const unique = new Set(nums.map(identity)).size;
 
-  if (version === "vengeance") {
-    cards = cleanVengeanceHand(cards);
-  }
-
-  let numberCards = cards.filter(isNumberCard);
-  let numbers = numberCards.map(numberValue);
-  let uniqueNumbers = new Set(numberCards.map(numberIdentity));
-
-  let total = numbers.reduce((a, b) => a + b, 0);
-
-  if (version === "classic") {
-    let bonus = 0;
-    let multiplier = 1;
-
-    cards.forEach(card => {
-      if (card.startsWith("+")) {
-        bonus += Number(card.replace("+", ""));
-      }
-
-      if (card === "x2") {
-        multiplier *= 2;
-      }
+  if(version()==="classic"){
+    let bonus = 0, mult = 1;
+    hand.forEach(card => {
+      if(card.startsWith("+")) bonus += Number(card.replace("+",""));
+      if(card==="x2") mult *= 2;
     });
-
-    total = total * multiplier + bonus;
-
-    if (uniqueNumbers.size >= 7) {
-      total += 15;
-    }
-
-    return Math.max(0, total);
-  }
-
-  if (version === "vengeance") {
-    if (cards.includes("Zero") && uniqueNumbers.size < 7) {
-      total = 0;
-    }
-
-    if (cards.includes("÷2")) {
-      total = Math.floor(total / 2);
-    }
-
-    cards.forEach(card => {
-      if (["-2","-4","-6","-8","-10"].includes(card)) {
-        total -= Number(card.replace("-", ""));
-      }
+    total = total * mult + bonus;
+  } else {
+    if(hand.includes("Zero") && unique < 7) total = 0;
+    if(hand.includes("÷2")) total = Math.floor(total / 2);
+    hand.forEach(card => {
+      if(["-2","-4","-6","-8","-10"].includes(card)) total -= Number(card.replace("-",""));
     });
-
-    total = Math.max(0, total);
-
-    if (uniqueNumbers.size >= 7) {
-      total += 15;
-    }
-
-    return total;
   }
 
+  total = Math.max(0,total);
+  if(unique >= 7) total += 15;
   return total;
 }
 
-function wouldBust(cards, drawnCard) {
-  const version = getVersion();
-
-  if (!isNumberCard(drawnCard)) return false;
-
-  const currentNumbers = cards.filter(isNumberCard).map(numberIdentity);
-  const drawnIdentity = numberIdentity(drawnCard);
-
-  if (version === "vengeance") {
-    if (drawnCard === "Lucky 13") {
-      return false;
-    }
-
-    if (drawnCard === "13") {
-      const hasNormal13 = currentNumbers.includes("13");
-      const hasLucky13 = currentNumbers.includes("13L");
-
-      if (hasNormal13) return true;
-
-      // Lucky 13 lets you have one other 13.
-      if (hasLucky13) return false;
-    }
-  }
-
-  return currentNumbers.includes(drawnIdentity);
+function hasFlip7(p){
+  return new Set(p.hand.filter(isNumber).map(identity)).size >= 7;
 }
 
-function applyDraw(cards, drawnCard) {
-  let next = [...cards, drawnCard];
-
-  if (getVersion() === "vengeance" && drawnCard === "Unlucky 7") {
-    next = cleanVengeanceHand(next);
+function wouldBust(hand, card){
+  if(!isNumber(card)) return false;
+  if(version()==="vengeance"){
+    if(card==="Lucky 13") return false;
+    if(card==="13" && hand.some(c => identity(c)==="13L") && !hand.some(c => c==="13")) return false;
   }
-
-  return next;
+  return hand.filter(isNumber).map(identity).includes(identity(card));
 }
 
-function evaluate() {
-  const deck = getCurrentDeck();
-  const totalCards = Object.values(deck).reduce((a, b) => a + b, 0);
-  const currentScore = score(myCards);
+function drawCardToPlayer(playerIndex, card){
+  const p = players[playerIndex];
+  if((getDeck()[card] || 0) <= 0) return;
 
-  if (totalCards <= 0) {
-    return {
-      recommendation: "STAY",
-      currentScore,
-      expected: "0.00",
-      bust: "0.0",
-      cardsRemaining: 0,
-      safeCards: 0,
-      bustCards: 0,
-      flip7Chance: "0.0"
-    };
+  if(wouldBust(p.hand, card)){
+    if(version()==="classic" && p.hand.includes("Second Chance")){
+      discardPile.push("Second Chance");
+      p.hand = p.hand.filter((c, i) => !(c==="Second Chance" && i===p.hand.indexOf("Second Chance")));
+      discardPile.push(card);
+      alert(`${p.name} used Second Chance. Duplicate ${card} was discarded.`);
+    } else {
+      p.hand.push(card);
+      bustPlayer(playerIndex);
+      alert(`${p.name} busted on ${card}.`);
+    }
+    update();
+    return;
   }
 
-  const hasSecondChance =
-    getVersion() === "classic" &&
-    document.getElementById("secondChance").checked;
+  p.hand.push(card);
 
-  let busts = 0;
-  let safeCards = 0;
-  let expected = 0;
-  let flip7Chance = 0;
+  if(version()==="vengeance" && card==="Unlucky 7"){
+    const before = [...p.hand];
+    p.hand = cleanVengeanceHand(p.hand);
+    before.forEach(c => { if(!p.hand.includes(c)) discardPile.push(c); });
+  }
 
-  Object.entries(deck).forEach(([card, count]) => {
-    if (count <= 0) return;
+  if(cfg().actions.includes(card)){
+    pendingAction = {card, ownerIndex: playerIndex};
+    openActionModal(card, playerIndex);
+  }
 
-    const probability = count / totalCards;
-    let outcome = currentScore;
+  if(hasFlip7(p)){
+    alert(`${p.name} hit Flip 7! Round ends.`);
+    endRound();
+    return;
+  }
 
-    if (wouldBust(myCards, card)) {
-      if (hasSecondChance) {
-        outcome = currentScore;
-        safeCards += count;
+  update();
+}
+
+function bustPlayer(i){
+  players[i].busted = true;
+  players[i].stayed = false;
+  discardPile.push(...players[i].hand);
+  players[i].hand = [];
+}
+
+function stayActive(){
+  const p = players[activePlayerIndex];
+  if(!p || p.busted) return;
+  p.stayed = true;
+  nextTurn();
+}
+
+function nextTurn(){
+  if(players.every(p => p.stayed || p.busted)){
+    endRound();
+    return;
+  }
+  for(let step=1; step<=players.length; step++){
+    const idx = (activePlayerIndex + step) % players.length;
+    if(!players[idx].stayed && !players[idx].busted){
+      activePlayerIndex = idx;
+      update();
+      return;
+    }
+  }
+}
+
+function endRound(){
+  players.forEach(p => {
+    if(!p.busted) p.score += scoreHand(p.hand);
+    discardPile.push(...p.hand);
+    p.hand = [];
+    p.stayed = false;
+    p.busted = false;
+  });
+  activePlayerIndex = 0;
+  alert("Round scored. Cards moved to discard.");
+  update();
+}
+
+function resetRoundOnly(){
+  players.forEach(p => {
+    discardPile.push(...p.hand);
+    p.hand = [];
+    p.stayed = false;
+    p.busted = false;
+  });
+  activePlayerIndex = 0;
+  update();
+}
+
+function shuffleDiscardBack(){
+  discardPile = [];
+  update();
+}
+
+function evaluatePlayer(p){
+  const deck = getDeck();
+  const totalCards = Object.values(deck).reduce((a,b)=>a+b,0);
+  const current = scoreHand(p.hand);
+  if(totalCards <= 0) return {rec:"STAY", current, expected:0, bust:0, flip7:0, safe:0, bustCards:0};
+
+  let expected = 0, bustCards = 0, safe = 0, flip7 = 0;
+  Object.entries(deck).forEach(([card,count]) => {
+    if(count <= 0) return;
+    const prob = count / totalCards;
+    let outcome = current;
+
+    if(wouldBust(p.hand, card)){
+      if(version()==="classic" && p.hand.includes("Second Chance")){
+        outcome = current; safe += count;
       } else {
-        outcome = 0;
-        busts += count;
+        outcome = 0; bustCards += count;
       }
     } else {
-      const nextCards = applyDraw(myCards, card);
-
-      if (
-        getVersion() === "vengeance" &&
-        ["Just One More","Flip Four","Swap","Steal","Discard"].includes(card)
-      ) {
-        outcome = currentScore;
-      } else if (
-        getVersion() === "classic" &&
-        ["Second Chance","Freeze","Flip Three"].includes(card)
-      ) {
-        outcome = currentScore;
-      } else {
-        outcome = score(nextCards);
-      }
-
-      safeCards += count;
-
-      const uniqueCount = new Set(
-        nextCards.filter(isNumberCard).map(numberIdentity)
-      ).size;
-
-      if (uniqueCount >= 7) {
-        flip7Chance += probability;
-      }
+      let next = [...p.hand, card];
+      if(version()==="vengeance" && card==="Unlucky 7") next = cleanVengeanceHand(next);
+      if(cfg().actions.includes(card)) outcome = current;
+      else outcome = scoreHand(next);
+      safe += count;
+      if(new Set(next.filter(isNumber).map(identity)).size >= 7) flip7 += prob;
     }
-
-    expected += outcome * probability;
+    expected += outcome * prob;
   });
 
-  const risk = document.getElementById("riskMode").value;
+  const risk = document.getElementById("riskMode")?.value || "Normal";
+  if(risk==="Conservative") expected *= .9;
+  if(risk==="Aggressive") expected *= 1.1;
 
-  if (risk === "Conservative") expected *= 0.9;
-  if (risk === "Aggressive") expected *= 1.1;
-
-  const mustHit =
-    getVersion() === "vengeance" &&
-    myCards.includes("Zero") &&
-    new Set(myCards.filter(isNumberCard).map(numberIdentity)).size < 7;
-
-  const recommendation = mustHit
-    ? "HIT"
-    : expected > currentScore
-      ? "HIT"
-      : "STAY";
-
-  return {
-    recommendation,
-    currentScore,
-    expected: expected.toFixed(2),
-    bust: ((busts / totalCards) * 100).toFixed(1),
-    cardsRemaining: totalCards,
-    safeCards,
-    bustCards: busts,
-    flip7Chance: (flip7Chance * 100).toFixed(1),
-    mustHit
-  };
+  const rec = expected > current ? "HIT" : "STAY";
+  return {rec, current, expected, bust:(bustCards/totalCards)*100, flip7:flip7*100, safe, bustCards};
 }
 
-function getButtonClass(card) {
-  const deck = getCurrentDeck();
-  const remaining = deck[card] || 0;
-  const max = getConfig().counts[card] || 1;
-
-  if (remaining === max) return "full";
-  if (remaining === 0) return "none";
-
-  const ratio = remaining / max;
-
-  if (ratio <= 0.33) return "low";
-  if (ratio <= 0.66) return "medium";
+function buttonClass(card){
+  const deck = getDeck();
+  const rem = deck[card] || 0;
+  const max = cfg().counts[card] || 1;
+  if(rem === max) return "full";
+  if(rem === 0) return "none";
+  const r = rem / max;
+  if(r <= .33) return "low";
+  if(r <= .66) return "medium";
   return "high";
 }
 
-function cardButtonLabel(card) {
-  const deck = getCurrentDeck();
-  const remaining = deck[card] || 0;
-  const max = getConfig().counts[card] || 0;
-
-  return `${card}\n${remaining}/${max}`;
+function cardLabel(card){
+  const deck = getDeck();
+  return `${card}\n${deck[card] || 0}/${cfg().counts[card]}`;
 }
 
-function renderButtons() {
-  const myButtons = document.getElementById("myButtons");
-  const visibleButtons = document.getElementById("visibleButtons");
-
-  myButtons.innerHTML = "";
-  visibleButtons.innerHTML = "";
-
-  getConfig().cards.forEach(card => {
-    const myButton = document.createElement("button");
-    myButton.innerText = cardButtonLabel(card);
-    myButton.className = `card-btn ${getButtonClass(card)}`;
-    myButton.onclick = () => {
-      if ((getCurrentDeck()[card] || 0) <= 0) return;
-      myCards.push(card);
-      update();
+function openDrawModal(mode, playerIndex){
+  pendingAction = pendingAction || {};
+  pendingAction.drawMode = mode;
+  pendingAction.targetIndex = playerIndex;
+  document.getElementById("drawTitle").innerText = `Enter card for ${players[playerIndex].name}`;
+  const wrap = document.getElementById("drawButtons");
+  wrap.innerHTML = "";
+  cfg().cards.forEach(card => {
+    const b = document.createElement("button");
+    b.className = `card-btn ${buttonClass(card)}`;
+    b.innerText = cardLabel(card);
+    b.onclick = () => {
+      if((getDeck()[card] || 0) <= 0) return;
+      closeModal();
+      drawCardToPlayer(playerIndex, card);
+      if(mode === "flipFour"){
+        pendingAction.remaining = (pendingAction.remaining || 1) - 1;
+        if(pendingAction.remaining > 0 && !players[playerIndex].busted && !hasFlip7(players[playerIndex])){
+          openDrawModal("flipFour", playerIndex);
+        } else {
+          pendingAction = null;
+          nextTurn();
+        }
+      } else if(mode === "justOneMore"){
+        players[playerIndex].stayed = true;
+        pendingAction = null;
+        nextTurn();
+      } else {
+        nextTurn();
+      }
     };
-    myButtons.appendChild(myButton);
+    wrap.appendChild(b);
+  });
+  document.getElementById("drawModal").style.display = "flex";
+}
 
-    const visibleButton = document.createElement("button");
-    visibleButton.innerText = cardButtonLabel(card);
-    visibleButton.className = `card-btn ${getButtonClass(card)}`;
-    visibleButton.onclick = () => {
-      if ((getCurrentDeck()[card] || 0) <= 0) return;
-      visibleCards.push(card);
-      update();
-    };
-    visibleButtons.appendChild(visibleButton);
+function closeModal(){ document.getElementById("drawModal").style.display = "none"; }
+
+function openActionModal(card, ownerIndex){
+  document.getElementById("actionTitle").innerText = `Resolve ${card}`;
+  const body = document.getElementById("actionBody");
+  body.innerHTML = `<div class="small">Choose a target or option. If the action has no valid target, discard it.</div>`;
+
+  if(card==="Freeze"){
+    players[ownerIndex].stayed = true;
+    discardPendingAction();
+    nextTurn();
+    return;
+  }
+
+  if(card==="Flip Three"){
+    pendingAction = {card, ownerIndex, remaining:3};
+    body.innerHTML += `<p>Flip Three: draw up to 3 cards for ${players[ownerIndex].name}. Stop on bust or Flip 7.</p><button class="green" onclick="openDrawModal('flipFour', ${ownerIndex})">Start Flip Three</button>`;
+  }
+
+  if(card==="Just One More"){
+    body.innerHTML += `<p>Choose a player. They must take one more card, then they are frozen/stayed.</p>`;
+    players.forEach((p,i) => {
+      if(!p.busted && !p.stayed) body.innerHTML += `<button style="width:100%;margin-top:8px" onclick="openDrawModal('justOneMore', ${i})">${p.name}</button>`;
+    });
+  }
+
+  if(card==="Flip Four"){
+    body.innerHTML += `<p>Choose a player. They must flip up to 4 cards. Stop immediately on bust or Flip 7.</p>`;
+    players.forEach((p,i) => {
+      if(!p.busted && !p.stayed) body.innerHTML += `<button style="width:100%;margin-top:8px" onclick="startFlipFour(${i})">${p.name}</button>`;
+    });
+  }
+
+  if(card==="Steal"){
+    body.innerHTML += `<p>Choose a player to steal from, then choose one of their cards.</p>`;
+    players.forEach((p,i) => {
+      if(i!==ownerIndex && p.hand.length) body.innerHTML += `<button style="width:100%;margin-top:8px" onclick="chooseSteal(${i})">${p.name}</button>`;
+    });
+  }
+
+  if(card==="Discard"){
+    body.innerHTML += `<p>Choose a player, then choose one of their cards to discard.</p>`;
+    players.forEach((p,i) => {
+      if(i!==ownerIndex && p.hand.length) body.innerHTML += `<button style="width:100%;margin-top:8px" onclick="chooseDiscard(${i})">${p.name}</button>`;
+    });
+  }
+
+  if(card==="Swap"){
+    body.innerHTML += `<p>Choose an opponent, then choose your card and their card to swap.</p>`;
+    players.forEach((p,i) => {
+      if(i!==ownerIndex && p.hand.length && players[ownerIndex].hand.length) body.innerHTML += `<button style="width:100%;margin-top:8px" onclick="chooseSwap(${i})">${p.name}</button>`;
+    });
+  }
+
+  document.getElementById("actionModal").style.display = "flex";
+}
+
+function closeActionModal(){ document.getElementById("actionModal").style.display = "none"; }
+
+function discardPendingAction(){
+  if(pendingAction && pendingAction.card){
+    const p = players[pendingAction.ownerIndex];
+    const idx = p.hand.indexOf(pendingAction.card);
+    if(idx >= 0) {
+      p.hand.splice(idx,1);
+      discardPile.push(pendingAction.card);
+    }
+  }
+  pendingAction = null;
+  closeActionModal();
+  update();
+}
+
+function startFlipFour(targetIndex){
+  pendingAction.remaining = 4;
+  closeActionModal();
+  openDrawModal("flipFour", targetIndex);
+}
+
+function chooseSteal(targetIndex){
+  const owner = players[pendingAction.ownerIndex];
+  const target = players[targetIndex];
+  let html = `<p>Steal which card from ${target.name}?</p>`;
+  target.hand.forEach((card, idx) => html += `<button style="width:100%;margin-top:8px" onclick="doSteal(${targetIndex},${idx})">${card}</button>`);
+  document.getElementById("actionBody").innerHTML = html;
+}
+
+function doSteal(targetIndex, cardIndex){
+  const owner = players[pendingAction.ownerIndex];
+  const target = players[targetIndex];
+  const [card] = target.hand.splice(cardIndex,1);
+  owner.hand.push(card);
+  pendingAction = null;
+  closeActionModal();
+  update();
+}
+
+function chooseDiscard(targetIndex){
+  const target = players[targetIndex];
+  let html = `<p>Discard which card from ${target.name}?</p>`;
+  target.hand.forEach((card, idx) => html += `<button style="width:100%;margin-top:8px" onclick="doDiscard(${targetIndex},${idx})">${card}</button>`);
+  document.getElementById("actionBody").innerHTML = html;
+}
+
+function doDiscard(targetIndex, cardIndex){
+  const target = players[targetIndex];
+  const [card] = target.hand.splice(cardIndex,1);
+  discardPile.push(card);
+  pendingAction = null;
+  closeActionModal();
+  update();
+}
+
+function chooseSwap(targetIndex){
+  const owner = players[pendingAction.ownerIndex];
+  let html = `<p>Choose your card to swap.</p>`;
+  owner.hand.forEach((card, idx) => html += `<button style="width:100%;margin-top:8px" onclick="chooseSwapMine(${targetIndex},${idx})">${card}</button>`);
+  document.getElementById("actionBody").innerHTML = html;
+}
+
+function chooseSwapMine(targetIndex, myIndex){
+  const target = players[targetIndex];
+  let html = `<p>Choose ${target.name}'s card.</p>`;
+  target.hand.forEach((card, idx) => html += `<button style="width:100%;margin-top:8px" onclick="doSwap(${targetIndex},${myIndex},${idx})">${card}</button>`);
+  document.getElementById("actionBody").innerHTML = html;
+}
+
+function doSwap(targetIndex, myIndex, theirIndex){
+  const owner = players[pendingAction.ownerIndex];
+  const target = players[targetIndex];
+  const tmp = owner.hand[myIndex];
+  owner.hand[myIndex] = target.hand[theirIndex];
+  target.hand[theirIndex] = tmp;
+  pendingAction = null;
+  closeActionModal();
+  update();
+}
+
+function renderPlayers(){
+  const wrap = document.getElementById("players");
+  wrap.innerHTML = "";
+  players.forEach((p,i) => {
+    const ev = evaluatePlayer(p);
+    const div = document.createElement("div");
+    div.className = `player-card ${i===activePlayerIndex ? "active" : ""} ${p.stayed ? "stayed" : ""} ${p.busted ? "busted" : ""}`;
+    div.innerHTML = `
+      <h3>${p.name} ${i===activePlayerIndex ? "👉" : ""}</h3>
+      <div>Score: <b>${p.score}</b> | Round: <b>${scoreHand(p.hand)}</b></div>
+      <div>Status: <b>${p.busted ? "BUSTED" : p.stayed ? "STAYED" : "ACTIVE"}</b></div>
+      <div class="display">${cardsText(p.hand)}</div>
+      <div class="small">Advice: ${ev.rec} | Bust ${ev.bust.toFixed(1)}% | EV ${ev.expected.toFixed(2)}</div>
+    `;
+    wrap.appendChild(div);
   });
 }
 
-function cardCountsText(cards) {
-  if (cards.length === 0) return "None";
+function renderAdvice(){
+  const p = players[activePlayerIndex];
+  if(!p){ return; }
+  const ev = evaluatePlayer(p);
+  const a = document.getElementById("advice");
+  a.innerText = ev.rec;
+  a.className = `result ${ev.rec==="HIT" ? "hit" : "stay"}`;
 
-  const counts = {};
-  cards.forEach(card => {
-    counts[card] = (counts[card] || 0) + 1;
-  });
-
-  return Object.entries(counts)
-    .map(([card, count]) => `${card} × ${count}`)
-    .join(" | ");
-}
-
-function renderDeckList() {
-  const deck = getCurrentDeck();
-
-  document.getElementById("deckList").innerHTML = getConfig().cards
-    .map(card => `${card}: <b>${deck[card] || 0}</b> / ${getConfig().counts[card]}`)
-    .join("<br>");
-}
-
-function update() {
-  const classicSecondChanceSection = document.getElementById("classicSecondChanceSection");
-
-  if (getVersion() === "classic") {
-    classicSecondChanceSection.style.display = "block";
-  } else {
-    classicSecondChanceSection.style.display = "none";
-    document.getElementById("secondChance").checked = false;
-  }
-
-  document.getElementById("myCards").innerText = cardCountsText(myCards);
-  document.getElementById("visibleCards").innerText = cardCountsText(visibleCards);
-  document.getElementById("discardPile").innerText = cardCountsText(discardPile);
-
-  const result = evaluate();
-
-  const resultDiv = document.getElementById("result");
-  resultDiv.innerText = result.recommendation;
-  resultDiv.className = "result " + (result.recommendation === "HIT" ? "hit" : "stay");
-
-  let extraWarning = "";
-
-  if (result.mustHit) {
-    extraWarning = `<div class="warning">Zero is active: in Vengeance, you must hit unless you have Flip 7.</div>`;
-  }
-
-  document.getElementById("stats").innerHTML = `
-    Current Score: <b>${result.currentScore}</b><br>
-    Expected Value If Hit: <b>${result.expected}</b><br>
-    Bust Chance: <b>${result.bust}%</b><br>
-    Flip 7 Chance: <b>${result.flip7Chance}%</b><br>
-    Cards Remaining in Deck: <b>${result.cardsRemaining}</b><br>
-    Safe Cards: <b>${result.safeCards}</b><br>
-    Bust Cards: <b>${result.bustCards}</b>
-    ${extraWarning}
+  document.getElementById("turnInfo").innerHTML = `
+    Active: <b>${p.name}</b><br>
+    Hand: ${cardsText(p.hand)}<br>
+    Status: <b>${p.busted ? "BUSTED" : p.stayed ? "STAYED" : "ACTIVE"}</b>
   `;
 
-  renderDeckList();
-  renderButtons();
+  document.getElementById("odds").innerHTML = `
+    <div class="stat">Current Round Score<br><b>${ev.current}</b></div>
+    <div class="stat">Expected If Hit<br><b>${ev.expected.toFixed(2)}</b></div>
+    <div class="stat">Bust Chance<br><b>${ev.bust.toFixed(1)}%</b></div>
+    <div class="stat">Flip 7 Chance<br><b>${ev.flip7.toFixed(1)}%</b></div>
+    <div class="stat">Safe Cards<br><b>${ev.safe}</b></div>
+    <div class="stat">Bust Cards<br><b>${ev.bustCards}</b></div>
+  `;
 }
 
-function undoMy() {
-  myCards.pop();
-  update();
+function renderDeck(){
+  const deck = getDeck();
+  document.getElementById("discardPile").innerHTML = cardsText(discardPile);
+  document.getElementById("deckList").innerHTML = cfg().cards.map(card => `${card}: <b>${deck[card] || 0}</b> / ${cfg().counts[card]}`).join("<br>");
 }
 
-function undoVisible() {
-  visibleCards.pop();
-  update();
+function update(){
+  if(!players.length) newGame();
+  renderAdvice();
+  renderPlayers();
+  renderDeck();
 }
 
-function resetRound() {
-  discardPile.push(...myCards);
-  discardPile.push(...visibleCards);
-
-  if (
-    getVersion() === "classic" &&
-    document.getElementById("secondChance").checked
-  ) {
-    discardPile.push("Second Chance");
-  }
-
-  myCards = [];
-  visibleCards = [];
-  document.getElementById("secondChance").checked = false;
-
-  update();
-}
-
-function shuffleDiscardBack() {
-  discardPile = [];
-  update();
-}
-
-function changeVersion() {
-  myCards = [];
-  visibleCards = [];
-  discardPile = [];
-  document.getElementById("secondChance").checked = false;
-  update();
-}
-
-update();
+newGame();
 </script>
-
 </body>
 </html>
