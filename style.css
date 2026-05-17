@@ -618,3 +618,27 @@
   from { filter: brightness(1); }
   to { filter: brightness(1.3); }
 }
+
+
+.metric-info-card {
+  max-width: 420px;
+}
+
+#metricInfoBody {
+  font-size: 15px;
+  line-height: 1.5;
+}
+
+#metricInfoBody .formula {
+  background: #090c12;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px;
+  margin-top: 8px;
+  font-family: monospace;
+  white-space: pre-wrap;
+}
+
+.advice-tile {
+  cursor: pointer;
+}

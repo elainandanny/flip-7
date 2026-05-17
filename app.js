@@ -1250,6 +1250,73 @@ function mctsDecision(rootIndex){
   };
 }
 
+
+const METRIC_INFO = {
+  mctsHit: {
+    title: "MCTS Hit Value",
+    body: `<p><b>What it means:</b> Estimated value if the active player hits now.</p>
+           <p>This uses the app's current advisor model to compare drawing against staying.</p>
+           <div class="formula">Higher hit value = HIT is better.</div>`
+  },
+  mctsStay: {
+    title: "MCTS Stay Value",
+    body: `<p><b>What it means:</b> Estimated value if the active player stays now.</p>
+           <p>This is usually the current round score, adjusted by the advisor model.</p>
+           <div class="formula">If stay value is higher than hit value, STAY is recommended.</div>`
+  },
+  roundScore: {
+    title: "Round Score",
+    body: `<p><b>What it means:</b> Points the player has right now if they stay.</p>
+           <p>Negative modifier cards subtract from the number total. Zero scores 0 unless Flip 7 is reached.</p>
+           <div class="formula">Round score = numbers + modifiers + Flip 7 bonus.</div>`
+  },
+  bustChance: {
+    title: "Bust Chance",
+    body: `<p><b>What it means:</b> Chance the next card immediately busts this player.</p>
+           <p>The app counts duplicate-number cards still in the deck.</p>
+           <div class="formula">Bust chance = bust cards left / total cards left.</div>`
+  },
+  flip7Chance: {
+    title: "Flip 7 Chance",
+    body: `<p><b>What it means:</b> Estimated chance of eventually reaching Flip 7 if the player keeps hitting until success or bust.</p>
+           <div class="formula">Flip 7 chance = successful simulated futures / total simulations.</div>`
+  },
+  confidence: {
+    title: "Confidence",
+    body: `<p><b>What it means:</b> How strongly the app prefers HIT or STAY.</p>
+           <p>Higher confidence means the hit and stay values are farther apart.</p>
+           <div class="formula">Confidence is based on the gap between hit value and stay value.</div>`
+  }
+};
+
+function openMetricInfo(metricKey){
+  const info = METRIC_INFO[metricKey];
+  if(!info) return;
+
+  document.getElementById("metricInfoTitle").innerText = info.title;
+  document.getElementById("metricInfoBody").innerHTML = info.body;
+  document.getElementById("metricInfoModal").style.display = "flex";
+}
+
+function closeMetricInfo(){
+  document.getElementById("metricInfoModal").style.display = "none";
+}
+
+
+function updateCornerRecommendation(rec){
+  const corner = document.getElementById("cornerRecommend");
+  if(!corner) return;
+
+  if(!rec || !showAdvice()){
+    corner.style.display = "none";
+    return;
+  }
+
+  corner.style.display = "block";
+  corner.innerText = rec;
+  corner.className = `corner-recommend ${rec==="HIT" ? "hit" : "stay"}`;
+}
+
 function renderAdvice(){
   try {
   const p=players[active];
@@ -1271,6 +1338,7 @@ function renderAdvice(){
   const odds=document.getElementById("oddsBox");
 
   if(!showAdvice()){
+    updateCornerRecommendation(null);
     adviceBox.innerHTML='<div class="display">Odds and advice are hidden for this mode.</div>';
     odds.innerHTML='';
     return;
@@ -1278,6 +1346,7 @@ function renderAdvice(){
 
   const ev=evalPlayer(p);
   const mcts=mctsDecision(active);
+  updateCornerRecommendation(mcts.rec);
 
   adviceBox.innerHTML=`
     <div class="advice-grid">
@@ -1305,6 +1374,7 @@ function renderAdvice(){
       corner.style.display = "block";
       corner.innerText = "HIT";
       corner.className = "corner-recommend hit";
+      corner.style.display = "block";
     }
     if(adviceBox){
       adviceBox.innerHTML = `<div class="turn-banner">Advice fallback active. Continue playing.</div>`;
@@ -1688,5 +1758,9 @@ showSetup();
 document.getElementById("turnTitle").innerText = "Press Start Game";
 document.getElementById("turnDetails").innerHTML = "Choose setup options, then press Start Game.";
 
-Object.assign(window,{openMetricInfo, closeMetricInfo, canResolvePendingAction, toggleInfo
+Object.assign(window,{openMetricInfo, closeMetricInfo, canResolvePendingAction, toggleInfo, updateCornerRecommendation
 });
+
+
+window.openMetricInfo = openMetricInfo;
+window.closeMetricInfo = closeMetricInfo;
