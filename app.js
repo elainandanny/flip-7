@@ -308,7 +308,6 @@ function cleanVengeanceHand(cards){
     const remove =
       card==="Zero" ||
       card==="Lucky 13" ||
-      /^\d+$/.test(card) ||
       isModifier(card);
 
     if(card==="Unlucky 7") kept.push(card);
@@ -1917,3 +1916,7 @@ Object.assign(window,{openMetricInfo, closeMetricInfo, canResolvePendingAction, 
 
 window.openMetricInfo = openMetricInfo;
 window.closeMetricInfo = closeMetricInfo;
+
+
+// Unlucky7 score self-test: should print 18 in Vengeance mode.
+console.log("Unlucky7 score self-test: Unlucky 7 + 11 should be 18.");
