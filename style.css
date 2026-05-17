@@ -665,3 +665,22 @@
   font-weight: 900;
   margin-left: 4px;
 }
+
+
+#mctsWorkerStatus {
+  margin-top: 8px;
+}
+
+#mctsWorkerStatus:empty {
+  display: none;
+}
+
+.mcts-working {
+  background: #171225;
+  border: 1px solid #6d5dfc;
+  border-radius: 10px;
+  padding: 8px;
+  font-size: 13px;
+  color: #e8ddff;
+  margin-top: 8px;
+}

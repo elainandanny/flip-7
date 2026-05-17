@@ -22,6 +22,8 @@ let discard = [];
 let round = 1;
 let logLines = [];
 let gameStarted = false;
+let gameOver = false;
+let targetScore = 200;
 let pending = null;
 let swapTemp = null;
 let pendingRoundEnd = null;
@@ -1334,6 +1336,8 @@ function getMctsBudgetMs(){
 function initTrueMctsWorker(){
   if(trueMctsWorker) return true;
 
+  console.log("Starting mcts-worker.js on this device...");
+
   if(!window.Worker){
     console.warn("Web Workers are not supported in this browser.");
     return false;
@@ -1347,12 +1351,14 @@ function initTrueMctsWorker(){
     if(!msg || msg.jobId !== trueMctsJobId) return;
 
     if(msg.type === "progress"){
+      console.log("MCTS progress:", msg.sims, "futures");
       mctsProgressText = `Thinking… ${msg.sims} futures`;
       renderMctsWorkerStatus();
       return;
     }
 
     if(msg.type === "result"){
+      console.log("MCTS completed:", msg.result.simulations, "futures in", msg.result.elapsedMs, "ms");
       latestMctsResult = msg.result;
       mctsProgressText = "";
       renderMctsWorkerStatus();
@@ -1390,7 +1396,7 @@ function getWorkerState(){
 
 function requestTrueMcts(){
   if(!isTrueMctsEnabled()) return;
-  if(!players.length || gameOver || pending) return;
+  if(!players.length || (typeof gameOver !== 'undefined' && gameOver) || pending) return;
   if(!initTrueMctsWorker()) return;
 
   trueMctsJobId++;
@@ -1487,8 +1493,7 @@ function renderAdvice(){
     </div>
   `;
 
-  adviceBox.innerHTML += `<div id="mctsWorkerStatus"></div>`;
-  odds.innerHTML=``;
+    odds.innerHTML=``;
   requestTrueMcts();
 
   } catch(error) {
@@ -1508,6 +1513,7 @@ function renderAdvice(){
       adviceBox.innerHTML = `<div class="turn-banner">Advice fallback active. Continue playing.</div>`;
     }
     if(odds) odds.innerHTML = "";
+    try { requestTrueMcts(); } catch(e) {}
   }
 }
 
