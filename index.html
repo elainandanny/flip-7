@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Flip 7 Game Advisor</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+<div class="topbar">
+  <div><b>🃏 Flip 7</b> <span class="small" id="topStatus">Setup</span></div>
+  <button class="hamburger" onclick="toggleMenu()">☰</button>
+</div>
+<div id="menuBackdrop" class="menu-backdrop" onclick="toggleMenu(false)"></div>
+<div id="menuDrawer" class="menu-drawer">
+  <h2>Menu</h2>
+  <button onclick="showSetup(); toggleMenu(false)">Setup / New Game</button>
+  <div class="compact-actions">
+    <button class="blue" onclick="shuffleDiscardBack(); toggleMenu(false)">Shuffle Discard</button>
+    <button onclick="toggleMenu(false)">Close</button>
+  </div>
+  <div class="small" style="margin-top:10px">
+    Stayed players can still be targeted. Busted players stay visible but greyed out until round end.
+  </div>
+  <h2>Rules</h2>
+  <ul class="small rules-list">
+    <li>Stayed players can still be targeted by action cards.</li>
+    <li>Busted players are out immediately and score 0 for the round.</li>
+    <li>Busted cards stay visible but greyed out until round end.</li>
+    <li>If the deck runs out mid-round, shuffle only the discard pile back into the deck.</li>
+    <li>In Vengeance, Zero scores 0 unless the player reaches Flip 7.</li>
+  </ul>
+</div>
+<div class="app">
+  <div class="left">
+    <div id="setupCard" class="setup-card">
+      <h1>🃏 Flip 7</h1>
+      <div class="small">Setup the game. After start, this card hides for easier mobile play.</div>
+
+      <label>Game version</label>
+      <select id="gameVersion">
+        <option value="classic">Original Flip 7</option>
+        <option value="vengeance" selected>Flip 7: With a Vengeance</option>
+      </select>
+
+      <label>Mode</label>
+      <select id="playMode" onchange="update()">
+        <option value="tracker">Tracker</option>
+        <option value="digital">Play Game</option>
+      </select>
+
+      <label>Show odds/advice in digital play?</label>
+      <select id="showAdviceDigital" onchange="update()">
+        <option value="yes" selected>Show odds and advice</option>
+        <option value="no">Hide odds and advice</option>
+      </select>
+
+      <label>Number of players</label>
+      <input id="playerCount" type="number" min="1" max="10" value="4" />
+
+      <label>Player names, one per line</label>
+      <textarea id="playerNames">Alice
+Bob
+Catherine
+David</textarea>
+
+      <div class="row">
+        <button class="green" onclick="startGame()">Start Game</button>
+      </div>
+    </div>
+
+    <div id="gameMenu" class="panel hidden" style="display:none">
+      <h2>Menu</h2>
+      <button onclick="showSetup()">Show Setup / New Game</button>
+      <div class="row">
+        <button class="blue" onclick="shuffleDiscardBack()">Shuffle Discard Into Deck</button>
+      </div>
+      <div class="small" style="margin-top:10px">
+        Dealer rotates each round. If all players stay or bust, the round ends automatically.
+      </div>
+    </div>
+  </div>
+
+  <div class="main">
+    <div class="panel">
+      <div class="current-turn" id="turnTitle">Start a game</div>
+      <div class="scoreline" id="turnDetails"></div>
+      <div id="adviceBox"></div>
+      <div id="oddsBox" class="stats"></div>
+
+      <div class="compact-actions two-actions">
+        <button class="green" id="hitButton" onclick="hitActive()">HIT</button>
+        <button class="red" onclick="stayActive()">STAY</button>
+      </div>
+    </div>
+
+    <div class="panel" id="manualEntryPanel">
+      <h2>Enter Drawn Card</h2>
+      <div class="small">Tap the card the active player received. Count is shown in the bottom-right.</div>
+      <div id="drawGrid" class="card-grid"></div>
+    </div>
+
+    <div class="panel">
+      <h2>Players</h2>
+      <div id="playersGrid" class="players"></div>
+    </div>
+  </div>
+
+  <div class="right">
+    <div class="panel">
+      <h2>Cards Remaining in Deck</h2>
+      <div id="deckGrid" class="deck-grid"></div>
+      <div class="small" style="margin-top:10px">
+        White full · Green high · Yellow medium · Red low · Black none
+      </div>
+    </div>
+
+    <div class="panel">
+      <h2>Discard Pile</h2>
+      <div id="discardText" class="display"></div>
+    </div>
+
+    <div class="panel">
+      <h2>Game Log</h2>
+      <div id="log" class="log"></div>
+    </div>
+  </div>
+</div>
+
+<div id="cardZoomModal" class="modal" onclick="closeCardZoom()">
+  <div class="card-zoom-content" onclick="event.stopPropagation()">
+    <img id="cardZoomImg" src="" alt="Card preview">
+  </div>
+</div>
+
+<div id="roundMessageModal" class="modal">
+  <div class="modal-content">
+    <h2 id="roundMessageTitle">Round Over</h2>
+    <div id="roundMessageBody" class="display"></div>
+    <div class="compact-actions">
+      <button class="green" onclick="confirmRoundEnd()">Start Next Round</button>
+    </div>
+  </div>
+</div>
+
+<div id="actionModal" class="modal">
+  <div class="modal-content">
+    <h2 id="actionTitle">Resolve Action</h2>
+    <div id="actionBody"></div>
+    <div class="small" style="margin-top:10px">Choose a valid action below. Stayed players are still targetable; busted players are not.</div>
+  </div>
+</div>
+<script src="app.js" defer></script>
+</body>
+</html>
