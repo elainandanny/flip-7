@@ -56,6 +56,9 @@
         <option value="no">Hide odds and advice</option>
       </select>
 
+      <label>Target score</label>
+      <input id="targetScoreInput" type="number" min="1" value="200" />
+
       <label>Number of players</label>
       <input id="playerCount" type="number" min="1" max="10" value="4" />
 
@@ -153,6 +156,17 @@ David</textarea>
     <div id="metricInfoBody" class="display"></div>
     <div class="compact-actions">
       <button onclick="closeMetricInfo()">Close</button>
+    </div>
+  </div>
+</div>
+
+<div id="gameOverModal" class="modal">
+  <div class="modal-content">
+    <h2 id="gameOverTitle">Game Over</h2>
+    <div id="gameOverBody" class="display"></div>
+    <div class="compact-actions">
+      <button class="green" onclick="showSetup()">New Game</button>
+      <button onclick="closeGameOverModal()">Review Board</button>
     </div>
   </div>
 </div>

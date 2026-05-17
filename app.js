@@ -22,6 +22,8 @@ let discard = [];
 let round = 1;
 let logLines = [];
 let gameStarted = false;
+let gameOver = false;
+let targetScore = 200;
 let pending = null;
 let swapTemp = null;
 let pendingRoundEnd = null;
@@ -92,6 +94,8 @@ function startGame(){
   swapTemp = null;
   logLines = [];
   gameStarted = true;
+  gameOver = false;
+  targetScore = Number(document.getElementById("targetScoreInput")?.value || 200);
 
   document.getElementById("setupCard").classList.add("hidden");
   document.getElementById("gameMenu").classList.remove("hidden");
@@ -373,6 +377,11 @@ function wouldBust(hand, card){
 }
 
 function hitActive(){
+  if(gameOver){
+    alert("Game is over. Start a new game from the menu.");
+    return;
+  }
+
   if(hasPendingAction()){
     alert(`Resolve ${pending.card} before anyone draws again.`);
     openAction(pending.card, pending.owner);
@@ -478,6 +487,11 @@ function bustPlayer(i){
 }
 
 function stayActive(){
+  if(gameOver){
+    alert("Game is over. Start a new game from the menu.");
+    return;
+  }
+
   if(hasPendingAction()){
     alert(`Resolve ${pending.card} before staying.`);
     openAction(pending.card, pending.owner);
@@ -561,8 +575,51 @@ function confirmRoundEnd(){
   endRound();
 }
 
+
+function checkGameOver(){
+  const reached = players.some(p => p.score >= targetScore);
+
+  if(!reached){
+    return false;
+  }
+
+  const highScore = Math.max(...players.map(p => p.score));
+  const winners = players.filter(p => p.score === highScore);
+
+  gameOver = true;
+
+  const leaderboard = [...players]
+    .sort((a,b)=>b.score-a.score)
+    .map((p,index)=>`${index+1}. ${p.name}: ${p.score}`)
+    .join("<br>");
+
+  const winnerText = winners.length === 1
+    ? `<b>${winners[0].name}</b> wins with <b>${highScore}</b> points!`
+    : `<b>Tie!</b> ${winners.map(p=>p.name).join(", ")} win with <b>${highScore}</b> points.`;
+
+  document.getElementById("gameOverTitle").innerText = "Game Over";
+  document.getElementById("gameOverBody").innerHTML = `
+    <p>${winnerText}</p>
+    <p>Target score: <b>${targetScore}</b></p>
+    <hr>
+    <p><b>Final leaderboard</b></p>
+    <p>${leaderboard}</p>
+  `;
+
+  document.getElementById("gameOverModal").style.display = "flex";
+
+  log(`Game over. ${winners.map(p=>p.name).join(", ")} win with ${highScore} points.`, true);
+  update();
+
+  return true;
+}
+
+function closeGameOverModal(){
+  document.getElementById("gameOverModal").style.display = "none";
+}
+
 function endRound(){
-  if(!players.length) return;
+  if(!players.length || gameOver) return;
 
   players.forEach(p => {
     if(!p.busted) p.score += score(p.hand);
@@ -575,11 +632,16 @@ function endRound(){
     p.stayed = false;
   });
 
+  if(checkGameOver()){
+    return;
+  }
+
   dealer = (dealer + 1) % players.length;
   active = dealer;
   round++;
 
   log(`Round scored. Round ${round} begins. ${players[dealer].name} is the new dealer and starts.`, true);
+
   update();
 }
 
@@ -1321,6 +1383,10 @@ function renderAdvice(){
   try {
   const p=players[active];
 
+  if(gameOver){
+    document.getElementById("turnTitle").innerText = "Game Over";
+  }
+
   if(!p){
     document.getElementById("turnTitle").innerText="Start a game";
     return;
@@ -1331,7 +1397,7 @@ function renderAdvice(){
 
   document.getElementById("turnDetails").innerHTML=
     `Version: <b>${cfg().name}</b> · Mode: <b>${mode()==="digital"?"Play in app":"Real-life tracker"}</b><br>
-     Dealer: <b>${players[dealer]?.name || ""}</b> · Deck cards left: <b>${remainingTotal()}</b>
+     Dealer: <b>${players[dealer]?.name || ""}</b> · Target: <b>${targetScore}</b> · Deck cards left: <b>${remainingTotal()}</b>
      ${pending && pending.card ? `<br><span class="pending-action-warning">Resolve ${pending.card} before anyone draws again.</span>` : ""}`;
 
   const adviceBox=document.getElementById("adviceBox");
@@ -1758,7 +1824,7 @@ showSetup();
 document.getElementById("turnTitle").innerText = "Press Start Game";
 document.getElementById("turnDetails").innerHTML = "Choose setup options, then press Start Game.";
 
-Object.assign(window,{openMetricInfo, closeMetricInfo, canResolvePendingAction, toggleInfo, updateCornerRecommendation
+Object.assign(window,{openMetricInfo, closeMetricInfo, canResolvePendingAction, toggleInfo, updateCornerRecommendation, closeGameOverModal, checkGameOver
 });
 
 
