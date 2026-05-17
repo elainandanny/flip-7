@@ -29,6 +29,7 @@
     <li>Busted cards stay visible but greyed out until round end.</li>
     <li>If the deck runs out mid-round, shuffle only the discard pile back into the deck.</li>
     <li>In Vengeance, Zero scores 0 unless the player reaches Flip 7.</li>
+    <li>Swap: the action owner swaps one of their cards with one card from another non-busted player.</li>
   </ul>
 </div>
 <div class="app">
@@ -83,7 +84,10 @@ David</textarea>
 
   <div class="main">
     <div class="panel">
-      <div class="current-turn" id="turnTitle">Start a game</div>
+      <div class="current-turn-bar">
+        <div class="current-turn" id="turnTitle">Start a game</div>
+        <div id="cornerRecommend" class="corner-recommend hit">HIT</div>
+      </div>
       <div class="scoreline" id="turnDetails"></div>
       <div id="adviceBox"></div>
       <div id="oddsBox" class="stats"></div>
@@ -111,9 +115,7 @@ David</textarea>
     <div class="panel">
       <h2>Cards Remaining in Deck</h2>
       <div id="deckGrid" class="deck-grid"></div>
-      <div class="small" style="margin-top:10px">
-        White full · Green high · Yellow medium · Red low · Black none
-      </div>
+
     </div>
 
     <div class="panel">

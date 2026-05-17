@@ -43,8 +43,9 @@ function cardImagePath(card){
   return `cards/${version()}/${fileNameForCard(card)}`;
 }
 
-function cardImageHtml(card, busted=false){
-  return `<div class="card-img-wrap ${busted ? "busted-card" : ""}" onclick="openCardZoom('${card.replaceAll("'", "\\'")}')">
+function cardImageHtml(card, busted=false, noZoom=false){
+  const zoom = noZoom ? "" : `onclick="openCardZoom('${card.replaceAll("'", "\\'")}')"`;
+  return `<div class="card-img-wrap ${busted ? "busted-card" : ""}" ${zoom}>
     <img class="card-art" src="${cardImagePath(card)}" alt="${card}">
   </div>`;
 }
@@ -142,8 +143,10 @@ function drawRandomCard(){
 }
 
 function isNumber(card){
-  if(version()==="vengeance") return !isNaN(card) || ["Zero","Unlucky 7","Lucky 13"].includes(card);
-  return !isNaN(card);
+  if(version()==="vengeance"){
+    return /^\d+$/.test(card) || ["Zero","Unlucky 7","Lucky 13"].includes(card);
+  }
+  return /^\d+$/.test(card);
 }
 
 function id(card){
@@ -157,13 +160,92 @@ function val(card){
   if(card==="Zero") return 0;
   if(card==="Unlucky 7") return 7;
   if(card==="Lucky 13") return 13;
-  return Number(card);
+  if(/^\d+$/.test(card)) return Number(card);
+  return 0;
 }
 
 function isAction(card){ return cfg().actions.includes(card); }
 function isModifier(card){ return cfg().modifiers.includes(card); }
 
-function isStealSwapTarget(card){
+function isPlayableCardTarget(card){
+  return !isAction(card);
+}
+
+function playerHasPlayableTarget(player){
+  return player.hand.some(isPlayableCardTarget);
+}
+
+function actionNeedsTarget(card){
+  return ["Swap", "Steal", "Discard", "Just One More", "Flip Four", "Flip Three"].includes(card);
+}
+
+function validActionTargets(card, owner){
+  const alive = players.map((p,i)=>({p,i})).filter(x=>!x.p.busted);
+
+  if(card==="Swap"){
+    return alive.filter(x =>
+      x.i !== owner &&
+      playerHasPlayableTarget(x.p) &&
+      playerHasPlayableTarget(players[owner])
+    );
+  }
+
+  if(card==="Steal"){
+    return alive.filter(x => x.i !== owner && playerHasPlayableTarget(x.p));
+  }
+
+  if(card==="Discard"){
+    return alive.filter(x => playerHasPlayableTarget(x.p));
+  }
+
+  if(card==="Just One More" || card==="Flip Four" || card==="Flip Three"){
+    return alive;
+  }
+
+  return [];
+}
+
+function autoDiscardUnplayableAction(card, owner, reason){
+  discardActionCard(owner, card);
+  pending = null;
+  closeActionModal();
+  log(`${card} discarded: ${reason}`);
+  alert(`${card} discarded: ${reason}`);
+  nextTurn();
+  update();
+}
+
+function actionHandImages(player){
+  const cards = player.hand.filter(isPlayableCardTarget);
+  if(!cards.length) return '<span class="small">No valid cards</span>';
+  return `<div class="action-hand-images">${cards.map(c=>cardImageHtml(c,false,true)).join("")}</div>`;
+}
+
+function actionChoiceButton(player, index, onclick){
+  return `<button class="choice" onclick="${onclick}">
+    <b>${player.name}</b>
+    ${actionHandImages(player)}
+  </button>`;
+}
+
+function toggleInfo(id){
+  const el = document.getElementById(id);
+  if(el) el.classList.toggle("hidden");
+}
+
+function handHasDuplicateNumber(hand){
+  const seen = new Set();
+  for(const c of hand){
+    if(!isNumber(c)) continue;
+    const key = id(c);
+    if(seen.has(key)) return true;
+    seen.add(key);
+  }
+  return false;
+}
+
+
+function isPlayableCardTarget(card){
   // Action cards resolve immediately and are discarded; they are not valid steal/swap/discard targets.
   return !isAction(card);
 }
@@ -174,6 +256,7 @@ function updatePendingActionButton(){
 
   if(pending && pending.card){
     btn.style.display = "block";
+    btn.disabled = false;
     btn.innerText = `Resolve ${pending.card}`;
   } else {
     btn.style.display = "none";
@@ -197,7 +280,7 @@ function cleanVengeanceHand(cards){
     const remove =
       card==="Zero" ||
       card==="Lucky 13" ||
-      (!isNaN(card)) ||
+      /^\d+$/.test(card) ||
       isModifier(card);
 
     if(card==="Unlucky 7") kept.push(card);
@@ -281,6 +364,12 @@ function wouldBust(hand, card){
 }
 
 function hitActive(){
+  if(pending && pending.card){
+    alert(`Resolve ${pending.card} before drawing another card.`);
+    openAction(pending.card, pending.owner);
+    return;
+  }
+
   if(!gameStarted) startGame();
 
   const p = players[active];
@@ -299,7 +388,12 @@ function hitActive(){
     }
 
     log(`${p.name} hits and draws ${card}.`);
-    receiveCard(active, card, {advance:true});
+    if(pending && pending.card){
+          alert(`Resolve ${pending.card} before drawing another card.`);
+          openAction(pending.card, pending.owner);
+          return;
+        }
+        receiveCard(active, card, {advance:true});
   } else {
     document.getElementById("manualEntryPanel").scrollIntoView({behavior:"smooth", block:"start"});
   }
@@ -350,6 +444,11 @@ function receiveCard(playerIndex, card, opts={}){
   }
 
   if(isAction(card)){
+    if(opts.suppressAction){
+      update();
+      return;
+    }
+
     pending = {card, owner:playerIndex, after:opts.advance};
     openAction(card, playerIndex);
     update();
@@ -370,6 +469,12 @@ function bustPlayer(i){
 }
 
 function stayActive(){
+  if(pending && pending.card){
+    alert(`Resolve ${pending.card} before staying or moving on.`);
+    openAction(pending.card, pending.owner);
+    return;
+  }
+
   if(!gameStarted) return;
 
   const p = players[active];
@@ -648,17 +753,7 @@ function evalPlayer(p){
 function buttonClass(card){
   const deck=getDeck();
   const rem=deck[card]||0;
-  const max=cfg().counts[card]||1;
-
-  if(rem===max) return "card-full";
-  if(rem===0) return "card-none";
-
-  const ratio=rem/max;
-
-  if(ratio<=.33) return "card-low";
-  if(ratio<=.66) return "card-med";
-
-  return "card-high";
+  return rem===0 ? "card-none" : "card-available";
 }
 
 function cardHtml(card){
@@ -732,7 +827,7 @@ function renderPlayers(){
 
       <div>
         <div class="hand-strip">${handHtml || '<span class="dashboard-note">No cards</span>'}</div>
-        ${!p.busted && ev ? `<div class="dashboard-note">${ev.rec} · Bust ${ev.bust.toFixed(0)}% · F7 ${ev.flip7.toFixed(0)}%</div>` : ''}
+        ${!p.busted && ev && showAdvice() ? `<div class="dashboard-note">${ev.rec} · Bust ${ev.bust.toFixed(0)}% · F7 ${ev.flip7.toFixed(0)}%</div>` : ''}
         ${p.busted ? '<div class="dashboard-note">Out — cards greyed</div>' : ''}
       </div>
     `;
@@ -873,7 +968,7 @@ function simResolveActionApprox(simPlayers, actorIndex, card, deck){
 
   const candidates = simPlayers
     .map((p,i)=>({p,i}))
-    .filter(x => !x.p.busted && x.p.hand.some(isStealSwapTarget));
+    .filter(x => !x.p.busted && x.p.hand.some(isPlayableCardTarget));
 
   const opponents = candidates.filter(x => x.i !== actorIndex);
 
@@ -882,7 +977,7 @@ function simResolveActionApprox(simPlayers, actorIndex, card, deck){
     const target = opponents[0].p;
     const bestIndex = target.hand
       .map((c,idx)=>({c,idx}))
-      .filter(x=>isStealSwapTarget(x.c))
+      .filter(x=>isPlayableCardTarget(x.c))
       .sort((a,b)=>valSafe(b.c)-valSafe(a.c))[0]?.idx ?? 0;
     const stolen = target.hand.splice(bestIndex,1)[0];
     if(stolen) actor.hand.push(stolen);
@@ -894,7 +989,7 @@ function simResolveActionApprox(simPlayers, actorIndex, card, deck){
     const target = candidates[0].p;
     const bestIndex = target.hand
       .map((c,idx)=>({c,idx}))
-      .filter(x=>isStealSwapTarget(x.c))
+      .filter(x=>isPlayableCardTarget(x.c))
       .sort((a,b)=>valSafe(b.c)-valSafe(a.c))[0]?.idx ?? 0;
     target.hand.splice(bestIndex,1);
     return;
@@ -906,11 +1001,11 @@ function simResolveActionApprox(simPlayers, actorIndex, card, deck){
     if(target.hand.length){
       const actorWorst = actor.hand
         .map((c,idx)=>({c,idx}))
-        .filter(x=>isStealSwapTarget(x.c))
+        .filter(x=>isPlayableCardTarget(x.c))
         .sort((a,b)=>valSafe(a.c)-valSafe(b.c))[0].idx;
       const targetBest = target.hand
         .map((c,idx)=>({c,idx}))
-        .filter(x=>isStealSwapTarget(x.c))
+        .filter(x=>isPlayableCardTarget(x.c))
         .sort((a,b)=>valSafe(b.c)-valSafe(a.c))[0].idx;
       const tmp = actor.hand[actorWorst];
       actor.hand[actorWorst] = target.hand[targetBest];
@@ -1124,7 +1219,8 @@ function renderAdvice(){
 
   document.getElementById("turnDetails").innerHTML=
     `Version: <b>${cfg().name}</b> · Mode: <b>${mode()==="digital"?"Play in app":"Real-life tracker"}</b><br>
-     Dealer: <b>${players[dealer]?.name || ""}</b> · Deck cards left: <b>${remainingTotal()}</b>`;
+     Dealer: <b>${players[dealer]?.name || ""}</b> · Deck cards left: <b>${remainingTotal()}</b>
+     ${pending && pending.card ? `<br><span class="pending-action-warning">Resolve ${pending.card} before anyone draws again.</span>` : ""}`;
 
   const adviceBox=document.getElementById("adviceBox");
   const odds=document.getElementById("oddsBox");
@@ -1197,7 +1293,12 @@ function openAction(card, owner){
   const body=document.getElementById("actionBody");
 
   title.innerText=`${players[owner].name}'s Action: ${card}`;
-  body.innerHTML=`<div class="hand-preview"><b>Current hands</b>${players.map((pl,idx)=>`<div class="small">${pl.name}${idx===owner?" (action owner)":""}: ${pl.busted?"BUSTED":(pl.hand.join(" ") || "No cards")}</div>`).join("")}</div>`;
+  body.innerHTML="";
+
+  if(actionNeedsTarget(card) && validActionTargets(card, owner).length === 0){
+    autoDiscardUnplayableAction(card, owner, `no valid target for ${card}`);
+    return;
+  }
 
   if(card==="Freeze"){
     players[owner].stayed=true;
@@ -1216,41 +1317,41 @@ function openAction(card, owner){
   }
 
   if(card==="Just One More"){
-    body.innerHTML+='<p>Choose any non-busted player. They draw one card and then stay.</p><div class="action-grid">';
-    validTargets(true).forEach(({p,i})=>{
-      body.innerHTML+=`<button class="choice" onclick="justOneMore(${i})">${p.name}<br><span class="small">${p.hand.map(c=>c).join(" ") || "No cards"}</span></button>`;
+    body.innerHTML+='<p>Choose any non-busted player. They draw one card and then stay.</p><div class="action-player-grid">';
+    validActionTargets(card, owner).forEach(({p,i})=>{
+      body.innerHTML+=actionChoiceButton(p, i, `justOneMore(${i})`);
     });
     body.innerHTML+='</div>';
   }
 
   if(card==="Flip Four"){
-    body.innerHTML+='<p>Choose any non-busted player. They draw up to 4 cards. Stop on bust or Flip 7.</p><div class="action-grid">';
-    validTargets(true).forEach(({p,i})=>{
-      body.innerHTML+=`<button class="choice" onclick="multiDraw(${i},4)">${p.name}<br><span class="small">${p.hand.map(c=>c).join(" ") || "No cards"}</span></button>`;
+    body.innerHTML+='<p>Choose any non-busted player. They draw up to 4 cards. Stop on bust or Flip 7.</p><div class="action-player-grid">';
+    validActionTargets(card, owner).forEach(({p,i})=>{
+      body.innerHTML+=actionChoiceButton(p, i, `multiDraw(${i},4)`);
     });
     body.innerHTML+='</div>';
   }
 
   if(card==="Steal"){
-    body.innerHTML+='<p>Choose a non-busted player to steal a card from. Stayed players can be targeted.</p><div class="action-grid">';
-    validTargets(true).filter(x=>x.i!==owner && x.p.hand.some(isStealSwapTarget)).forEach(({p,i})=>{
-      body.innerHTML+=`<button class="choice" onclick="chooseCard('steal',${i})">${p.name}<br><span class="small">${p.hand.map(c=>c).join(" ")}</span></button>`;
+    body.innerHTML+='<p>Choose a non-busted player to steal a card from. Stayed players can be targeted.</p><div class="action-player-grid">';
+    validActionTargets(card, owner).forEach(({p,i})=>{
+      body.innerHTML+=actionChoiceButton(p, i, `chooseCard('steal',${i})`);
     });
     body.innerHTML+='</div>';
   }
 
   if(card==="Discard"){
-    body.innerHTML+='<p>Choose a non-busted player and discard one of their cards.</p><div class="action-grid">';
-    validTargets(true).filter(x=>x.p.hand.some(isStealSwapTarget)).forEach(({p,i})=>{
-      body.innerHTML+=`<button class="choice" onclick="chooseCard('discard',${i})">${p.name}<br><span class="small">${p.hand.map(c=>c).join(" ")}</span></button>`;
+    body.innerHTML+='<p>Choose a non-busted player and discard one of their cards.</p><div class="action-player-grid">';
+    validActionTargets(card, owner).forEach(({p,i})=>{
+      body.innerHTML+=actionChoiceButton(p, i, `chooseCard('discard',${i})`);
     });
     body.innerHTML+='</div>';
   }
 
   if(card==="Swap"){
-    body.innerHTML+='<p>Choose a non-busted player to swap cards with.</p><div class="action-grid">';
-    validTargets(true).filter(x=>x.i!==owner && x.p.hand.some(isStealSwapTarget) && players[owner].hand.some(isStealSwapTarget)).forEach(({p,i})=>{
-      body.innerHTML+=`<button class="choice" onclick="chooseSwapMine(${i})">${p.name}<br><span class="small">${p.hand.map(c=>c).join(" ")}</span></button>`;
+    body.innerHTML+='<p>Choose a non-busted player to swap one of your cards with one of theirs.</p><div class="action-player-grid">';
+    validActionTargets(card, owner).forEach(({p,i})=>{
+      body.innerHTML+=actionChoiceButton(p, i, `chooseSwapMine(${i})`);
     });
     body.innerHTML+='</div>';
   }
@@ -1283,18 +1384,37 @@ function justOneMore(target){
   closeActionModal();
 
   if(mode()==="digital"){
+    const owner = pending ? pending.owner : active;
+    const sourceAction = pending ? pending.card : null;
+
     const c=drawRandomCard();
 
     if(c){
       log(`${players[target].name} is forced to draw ${c}.`);
-      receiveCard(target,c,{advance:false});
+
+      receiveCard(target,c,{advance:false, suppressAction:true});
+
+      if(sourceAction !== null){
+        discardActionCard(owner, sourceAction);
+      }
+
+      pending = null;
+
+      if(isAction(c) && !players[target].busted && !hasFlip7(players[target])){
+        pending = {card:c, owner:target, after:false};
+        openAction(c, target);
+        update();
+        return;
+      }
+    } else {
+      if(sourceAction !== null){
+        discardActionCard(owner, sourceAction);
+      }
+      pending = null;
     }
 
     if(!players[target].busted) players[target].stayed=true;
 
-    if(pending) discardActionCard(pending.owner,pending.card);
-
-    pending=null;
     nextTurn();
   } else {
     alert("Tracker mode: tap the forced card in Enter Drawn Card, then mark the target stayed if needed.");
@@ -1305,22 +1425,48 @@ function multiDraw(target, n){
   closeActionModal();
 
   if(mode()==="digital"){
+    const owner = pending ? pending.owner : active;
+    const sourceAction = pending ? pending.card : null;
+    const queuedActions = [];
+
     for(let i=0;i<n;i++){
       if(players[target].busted || hasFlip7(players[target])) break;
 
       const c=drawRandomCard();
-
       if(!c) break;
 
       log(`${players[target].name} forced draw: ${c}.`);
-      receiveCard(target,c,{advance:false});
 
-      if(pending===null) return;
+      const beforePending = pending;
+      receiveCard(target,c,{advance:false, suppressAction:true});
+
+      if(isAction(c) && !players[target].busted && !hasFlip7(players[target])){
+        queuedActions.push({card:c, owner:target});
+      }
+
+      pending = beforePending;
+
+      if(players[target].busted || hasFlip7(players[target])) break;
     }
 
-    if(pending) discardActionCard(pending.owner,pending.card);
+    if(sourceAction !== null){
+      discardActionCard(owner, sourceAction);
+    }
 
-    pending=null;
+    pending = null;
+
+    if(players[target].busted || hasFlip7(players[target])){
+      nextTurn();
+      return;
+    }
+
+    if(queuedActions.length){
+      const nextAction = queuedActions.shift();
+      pending = nextAction;
+      openAction(nextAction.card, nextAction.owner);
+      return;
+    }
+
     nextTurn();
   } else {
     alert(`Tracker mode: manually enter up to ${n} cards for ${players[target].name}. Stop on bust or Flip 7.`);
@@ -1330,14 +1476,14 @@ function multiDraw(target, n){
 function chooseCard(kind,target){
   const body=document.getElementById("actionBody");
 
-  body.innerHTML=`<p>Choose a card from ${players[target].name}. Action cards are not valid targets.</p><div class="action-grid">`;
+  body.innerHTML=`<p>Choose a card from ${players[target].name}. Action cards are not valid targets.</p><div class="action-card-choice-grid">`;
 
   players[target].hand.forEach((card,idx)=>{
-    if(!isStealSwapTarget(card)) return;
-    body.innerHTML+=`<button class="choice" onclick="confirmCardAction('${kind}',${target},${idx})">${cardImageHtml(card,false)}<br>${card}</button>`;
+    if(!isPlayableCardTarget(card)) return;
+    body.innerHTML+=`<button class="choice" onclick="confirmCardAction('${kind}',${target},${idx})">${cardImageHtml(card,false,true)}<br>${card}</button>`;
   });
 
-  body.innerHTML += `</div>`;
+  body.innerHTML += `</div><button class="action-back" onclick="openAction(pending.card,pending.owner)">Choose different player</button>`;
 }
 
 function confirmCardAction(kind,target,idx){
@@ -1347,7 +1493,7 @@ function confirmCardAction(kind,target,idx){
   document.getElementById("actionBody").innerHTML = `
     <div class="confirm-box">
       <p>Confirm: ${verb.toUpperCase()} <b>${card}</b> from <b>${players[target].name}</b>?</p>
-      <div class="round-review-hand">${cardImageHtml(card,false)}</div>
+      <div class="round-review-hand">${cardImageHtml(card,false,true)}</div>
       <div class="compact-actions">
         <button class="green" onclick="doCardAction('${kind}',${target},${idx})">Confirm</button>
         <button onclick="chooseCard('${kind}',${target})">Back</button>
@@ -1375,17 +1521,18 @@ function doCardAction(kind,target,idx){
 }
 
 function chooseSwapMine(target){
+  if(!canResolvePendingAction()){ alert("Only the action owner or host can resolve this action."); return; }
   swapTemp={target};
 
   const body=document.getElementById("actionBody");
 
-  body.innerHTML=`<p>Choose ${players[pending.owner].name}'s card to swap.</p><div class="action-grid">`;
+  body.innerHTML=`<p>Choose ${players[pending.owner].name}'s card to swap.</p><div class="action-card-choice-grid">`;
 
   players[pending.owner].hand.forEach((card,idx)=>{
-    if(!isStealSwapTarget(card)) return;
-    body.innerHTML+=`<button class="choice" onclick="chooseSwapTheirs(${idx})">${cardImageHtml(card,false)}<br>${card}</button>`;
+    if(!isPlayableCardTarget(card)) return;
+    body.innerHTML+=`<button class="choice" onclick="chooseSwapTheirs(${idx})">${cardImageHtml(card,false,true)}<br>${card}</button>`;
   });
-  body.innerHTML += `</div>`;
+  body.innerHTML += `</div><button class="action-back" onclick="openAction(pending.card,pending.owner)">Choose different player</button>`;
 }
 
 function chooseSwapTheirs(myIdx){
@@ -1394,13 +1541,13 @@ function chooseSwapTheirs(myIdx){
   const target=swapTemp.target;
   const body=document.getElementById("actionBody");
 
-  body.innerHTML=`<p>Choose ${players[target].name}'s card.</p><div class="action-grid">`;
+  body.innerHTML=`<p>Choose ${players[target].name}'s card.</p><div class="action-card-choice-grid">`;
 
   players[target].hand.forEach((card,idx)=>{
-    if(!isStealSwapTarget(card)) return;
-    body.innerHTML+=`<button class="choice" onclick="confirmSwap(${idx})">${cardImageHtml(card,false)}<br>${card}</button>`;
+    if(!isPlayableCardTarget(card)) return;
+    body.innerHTML+=`<button class="choice" onclick="confirmSwap(${idx})">${cardImageHtml(card,false,true)}<br>${card}</button>`;
   });
-  body.innerHTML += `</div>`;
+  body.innerHTML += `</div><button class="action-back" onclick="chooseSwapMine(${target})">Back to your cards</button><button class="action-back" onclick="openAction(pending.card,pending.owner)">Choose different player</button>`;
 }
 
 function confirmSwap(theirIdx){
@@ -1415,9 +1562,9 @@ function confirmSwap(theirIdx){
     <div class="confirm-box">
       <p>Confirm swap?</p>
       <p><b>${players[owner].name}</b>: ${myCard}</p>
-      <div class="round-review-hand">${cardImageHtml(myCard,false)}</div>
+      <div class="round-review-hand">${cardImageHtml(myCard,false,true)}</div>
       <p><b>${players[target].name}</b>: ${theirCard}</p>
-      <div class="round-review-hand">${cardImageHtml(theirCard,false)}</div>
+      <div class="round-review-hand">${cardImageHtml(theirCard,false,true)}</div>
       <div class="compact-actions">
         <button class="green" onclick="doSwap(${theirIdx})">Confirm</button>
         <button onclick="chooseSwapTheirs(${myIdx})">Back</button>
@@ -1436,6 +1583,16 @@ function doSwap(theirIdx){
   players[target].hand[theirIdx]=tmp;
 
   log(`${players[owner].name} swapped cards with ${players[target].name}.`);
+
+  if(handHasDuplicateNumber(players[owner].hand)){
+    bustPlayer(owner);
+    log(`${players[owner].name} busted from the swap.`);
+  }
+
+  if(handHasDuplicateNumber(players[target].hand)){
+    bustPlayer(target);
+    log(`${players[target].name} busted from the swap.`);
+  }
 
   discardActionCard(owner,pending.card);
 
