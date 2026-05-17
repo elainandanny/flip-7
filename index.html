@@ -11,7 +11,7 @@
       --purple:#a56eff; --black:#020202;
     }
     *{box-sizing:border-box}
-    body{margin:0;background:radial-gradient(circle at top,#202734,#101114 55%);color:var(--text);font-family:Arial,sans-serif;padding:12px}
+    body{margin:0;background:radial-gradient(circle at top,#202734,#101114 55%);color:var(--text);font-family:Arial,sans-serif;padding:8px}
     h1,h2,h3{margin:8px 0}
     h1{font-size:24px}
     h2{font-size:18px;color:#e8ecf5}
@@ -47,7 +47,7 @@
     .stats{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px}
     .stat{background:#121620;border:1px solid var(--border);border-radius:10px;padding:9px;font-size:13px;color:var(--muted)}
     .stat b{display:block;font-size:18px;color:white;margin-top:3px}
-    .card-grid,.deck-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:7px;margin-top:8px}
+    .card-grid,.deck-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-top:8px}
     .card-btn{min-height:68px;border:2px solid var(--border);font-weight:900;position:relative;overflow:hidden;padding:8px}
     .card-name{font-size:22px;line-height:1.05;display:block;text-align:center}
     .card-count{position:absolute;right:7px;bottom:5px;font-size:12px;opacity:.9}
@@ -57,18 +57,40 @@
     .log p{margin:0 0 5px}
     .modal{display:none;position:fixed;inset:0;background:rgba(0,0,0,.78);z-index:50;align-items:center;justify-content:center;padding:12px}
     .modal-content{background:#1b1f27;border:1px solid var(--border);border-radius:14px;padding:12px;width:min(760px,100%);max-height:92vh;overflow:auto}
-    .choice{background:#2a303d;text-align:left;margin-top:8px}
+    .choice{background:#2a303d;text-align:left;margin-top:6px}
     .rules li{margin-bottom:7px}
+    .topbar{position:sticky;top:0;z-index:20;background:rgba(16,17,20,.94);backdrop-filter:blur(10px);display:flex;align-items:center;justify-content:space-between;border:1px solid var(--border);border-radius:12px;padding:6px 8px;margin-bottom:8px}
+    .hamburger{width:42px;height:38px;padding:4px;font-size:24px;line-height:1;background:#2c3342}
+    .menu-drawer{position:fixed;top:0;right:-340px;width:min(330px,92vw);height:100vh;background:#151922;border-left:1px solid var(--border);z-index:80;padding:12px;transition:right .2s ease;overflow:auto}
+    .menu-drawer.open{right:0}
+    .menu-backdrop{position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:70;display:none}
+    .menu-backdrop.open{display:block}
+    .compact-actions{display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin-top:8px}
+    .compact-actions button{padding:10px;font-size:14px}
+    .action-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin-top:10px}
+    .action-grid button{padding:10px;font-size:14px;text-align:center}
+    .hand-preview{background:#111620;border:1px solid var(--border);border-radius:10px;padding:8px;margin-top:8px}
+    .card-art{width:100%;height:100%;object-fit:cover;border-radius:8px;display:block}
+    .card-img-wrap{width:64px;height:90px;border-radius:9px;overflow:hidden;border:1px solid rgba(255,255,255,.25);background:#111}
+    .card-img-wrap.busted-card{filter:grayscale(1);opacity:.42}
+    .card-btn .card-art{position:absolute;inset:3px;width:calc(100% - 6px);height:calc(100% - 6px);object-fit:cover;border-radius:8px}
+    .card-btn .card-count{background:rgba(0,0,0,.68);color:white;border-radius:999px;padding:2px 5px}
+    .card-btn{aspect-ratio:5/7;min-height:58px}
+    .mini-card{background:transparent!important;border:0!important;padding:0!important;min-width:auto!important;min-height:auto!important}
+    .mini-card.down{background:transparent!important;color:inherit!important}
+    .player.busted .cards-in-front{opacity:1}
+    .busted-note{color:#ffb4bd;font-size:12px;margin-top:6px}
+
     @media(min-width:760px){
       body{padding:16px}
       .app{grid-template-columns:300px 1fr 360px}
       .main{grid-column:2}
       .left{grid-column:1;grid-row:1 / span 3}
       .right{grid-column:3;grid-row:1 / span 3}
-      .card-grid,.deck-grid{grid-template-columns:repeat(4,1fr)}
+      .card-grid,.deck-grid{grid-template-columns:repeat(5,1fr)}
     }
     @media(max-width:480px){
-      .card-grid,.deck-grid{grid-template-columns:repeat(3,1fr)}
+      .card-grid,.deck-grid{grid-template-columns:repeat(4,1fr)}
       .card-name{font-size:18px}
       .card-btn{min-height:60px}
       .row{flex-direction:column}
@@ -78,6 +100,22 @@
   </style>
 </head>
 <body>
+<div class="topbar">
+  <div><b>🃏 Flip 7</b> <span class="small" id="topStatus">Setup</span></div>
+  <button class="hamburger" onclick="toggleMenu()">☰</button>
+</div>
+<div id="menuBackdrop" class="menu-backdrop" onclick="toggleMenu(false)"></div>
+<div id="menuDrawer" class="menu-drawer">
+  <h2>Menu</h2>
+  <button onclick="showSetup(); toggleMenu(false)">Setup / New Game</button>
+  <div class="compact-actions">
+    <button class="blue" onclick="shuffleDiscardBack(); toggleMenu(false)">Shuffle Discard</button>
+    <button onclick="toggleMenu(false)">Close</button>
+  </div>
+  <div class="small" style="margin-top:10px">
+    Stayed players can still be targeted. Busted players stay visible but greyed out until round end.
+  </div>
+</div>
 <div class="app">
   <div class="left">
     <div id="setupCard" class="setup-card">
@@ -92,8 +130,8 @@
 
       <label>Mode</label>
       <select id="playMode" onchange="update()">
-        <option value="tracker">Real-life advisor / tracker — I enter drawn cards</option>
-        <option value="digital">Play in app — draw random cards</option>
+        <option value="tracker">Tracker</option>
+        <option value="digital">Play Game</option>
       </select>
 
       <label>Show odds/advice in digital play?</label>
@@ -116,7 +154,7 @@ David</textarea>
       </div>
     </div>
 
-    <div id="gameMenu" class="panel hidden">
+    <div id="gameMenu" class="panel hidden" style="display:none">
       <h2>Menu</h2>
       <button onclick="showSetup()">Show Setup / New Game</button>
       <div class="row">
@@ -146,12 +184,10 @@ David</textarea>
       <div id="adviceBox"></div>
       <div id="oddsBox" class="stats"></div>
 
-      <div class="row">
+      <div class="compact-actions">
         <button class="green" id="hitButton" onclick="hitActive()">HIT</button>
         <button class="red" onclick="stayActive()">STAY</button>
-      </div>
-      <div class="row">
-        <button onclick="nextTurn()">Next Active Player</button>
+        <button onclick="nextTurn()">Next</button>
         <button class="blue" onclick="endRound()">End Round</button>
       </div>
     </div>
@@ -193,10 +229,7 @@ David</textarea>
   <div class="modal-content">
     <h2 id="actionTitle">Resolve Action</h2>
     <div id="actionBody"></div>
-    <div class="row">
-      <button onclick="discardActionAndContinue()">Discard Action / Skip</button>
-      <button onclick="closeActionModal()">Close</button>
-    </div>
+    <div class="small" style="margin-top:10px">Choose a valid action below. Stayed players are still targetable; busted players are not.</div>
   </div>
 </div>
 
@@ -232,6 +265,32 @@ function cfg(){ return CONFIGS[document.getElementById("gameVersion").value]; }
 function version(){ return document.getElementById("gameVersion").value; }
 function mode(){ return document.getElementById("playMode").value; }
 function showAdvice(){ return mode()==="tracker" || document.getElementById("showAdviceDigital").value==="yes"; }
+
+function fileNameForCard(card){
+  return card.toLowerCase()
+    .replaceAll(" ", "-")
+    .replaceAll("+", "plus")
+    .replaceAll("÷", "divide") + ".png";
+}
+
+function cardImagePath(card){
+  return `cards/${version()}/${fileNameForCard(card)}`;
+}
+
+function cardImageHtml(card, busted=false){
+  return `<div class="card-img-wrap ${busted ? "busted-card" : ""}">
+    <img class="card-art" src="${cardImagePath(card)}" alt="${card}">
+  </div>`;
+}
+
+
+function toggleMenu(force){
+  const drawer = document.getElementById("menuDrawer");
+  const backdrop = document.getElementById("menuBackdrop");
+  const open = typeof force === "boolean" ? force : !drawer.classList.contains("open");
+  drawer.classList.toggle("open", open);
+  backdrop.classList.toggle("open", open);
+}
 
 function log(msg, good=false){
   logLines.unshift(`<p style="color:${good?'#56e071':'#fff'}">${msg}</p>`);
@@ -773,7 +832,8 @@ function cardHtml(card){
   const rem=deck[card]||0;
   const max=cfg().counts[card]||0;
 
-  return `<span class="card-name">${card}</span><span class="card-count">${rem}/${max}</span>`;
+  return `<img class="card-art" src="${cardImagePath(card)}" alt="${card}">
+          <span class="card-count">${rem}/${max}</span>`;
 }
 
 function renderCardGrid(elId, clickable){
@@ -812,8 +872,8 @@ function renderPlayers(){
     const status=p.busted ? "BUSTED" : p.stayed ? "STAYED" : i===active ? "ACTIVE" : "WAITING";
 
     const shown = p.busted
-      ? p.bustedHand.map(c=>`<div class="${cardClass(c,true)}">?</div>`).join("")
-      : p.hand.map(c=>`<div class="${cardClass(c)}">${c}</div>`).join("");
+      ? p.bustedHand.map(c=>cardImageHtml(c,true)).join("")
+      : p.hand.map(c=>cardImageHtml(c,false)).join("");
 
     d.innerHTML=`
       <div class="player-head">
@@ -823,7 +883,7 @@ function renderPlayers(){
       <div class="scoreline">Game score: <b>${p.score}</b> · Round score: <b>${p.busted?0:score(p.hand)}</b></div>
       <div class="cards-in-front">${shown || '<span class="small">No cards</span>'}</div>
       ${hasActiveZero(p)?'<div class="reason">Zero active: staying scores 0 unless this player reaches Flip 7.</div>':''}
-      ${p.busted?'<div class="small">Cards are face down and out of play until round end.</div>':''}
+      ${p.busted?'<div class="busted-note">Out of round: cards are unavailable and greyed out until round end.</div>':''}
     `;
 
     el.appendChild(d);
@@ -839,6 +899,7 @@ function renderAdvice(){
   }
 
   document.getElementById("turnTitle").innerText=`Round ${round}: ${p.name}'s turn`;
+  document.getElementById("topStatus").innerText = `R${round} · ${p.name}`;
 
   document.getElementById("turnDetails").innerHTML=
     `Version: <b>${cfg().name}</b> · Mode: <b>${mode()==="digital"?"Play in app":"Real-life tracker"}</b><br>
@@ -931,38 +992,43 @@ function openAction(card, owner){
   }
 
   if(card==="Just One More"){
-    body.innerHTML='<p>Choose any non-busted player. They draw one card and then stay.</p>';
+    body.innerHTML='<p>Choose any non-busted player. They draw one card and then stay.</p><div class="action-grid">';
     validTargets(true).forEach(({p,i})=>{
-      body.innerHTML+=`<button class="choice" onclick="justOneMore(${i})">${p.name}</button>`;
+      body.innerHTML+=`<button class="choice" onclick="justOneMore(${i})">${p.name}<br><span class="small">${p.hand.map(c=>c).join(" ") || "No cards"}</span></button>`;
     });
+    body.innerHTML+='</div>';
   }
 
   if(card==="Flip Four"){
-    body.innerHTML='<p>Choose any non-busted player. They draw up to 4 cards. Stop on bust or Flip 7.</p>';
+    body.innerHTML='<p>Choose any non-busted player. They draw up to 4 cards. Stop on bust or Flip 7.</p><div class="action-grid">';
     validTargets(true).forEach(({p,i})=>{
-      body.innerHTML+=`<button class="choice" onclick="multiDraw(${i},4)">${p.name}</button>`;
+      body.innerHTML+=`<button class="choice" onclick="multiDraw(${i},4)">${p.name}<br><span class="small">${p.hand.map(c=>c).join(" ") || "No cards"}</span></button>`;
     });
+    body.innerHTML+='</div>';
   }
 
   if(card==="Steal"){
-    body.innerHTML='<p>Choose a non-busted player to steal a card from. Stayed players can be targeted.</p>';
+    body.innerHTML='<p>Choose a non-busted player to steal a card from. Stayed players can be targeted.</p><div class="action-grid">';
     validTargets(true).filter(x=>x.i!==owner && x.p.hand.length).forEach(({p,i})=>{
-      body.innerHTML+=`<button class="choice" onclick="chooseCard('steal',${i})">${p.name}</button>`;
+      body.innerHTML+=`<button class="choice" onclick="chooseCard('steal',${i})">${p.name}<br><span class="small">${p.hand.map(c=>c).join(" ")}</span></button>`;
     });
+    body.innerHTML+='</div>';
   }
 
   if(card==="Discard"){
-    body.innerHTML='<p>Choose a non-busted player and discard one of their cards.</p>';
+    body.innerHTML='<p>Choose a non-busted player and discard one of their cards.</p><div class="action-grid">';
     validTargets(true).filter(x=>x.p.hand.length).forEach(({p,i})=>{
-      body.innerHTML+=`<button class="choice" onclick="chooseCard('discard',${i})">${p.name}</button>`;
+      body.innerHTML+=`<button class="choice" onclick="chooseCard('discard',${i})">${p.name}<br><span class="small">${p.hand.map(c=>c).join(" ")}</span></button>`;
     });
+    body.innerHTML+='</div>';
   }
 
   if(card==="Swap"){
-    body.innerHTML='<p>Choose a non-busted player to swap cards with.</p>';
+    body.innerHTML='<p>Choose a non-busted player to swap cards with.</p><div class="action-grid">';
     validTargets(true).filter(x=>x.i!==owner && x.p.hand.length && players[owner].hand.length).forEach(({p,i})=>{
-      body.innerHTML+=`<button class="choice" onclick="chooseSwapMine(${i})">${p.name}</button>`;
+      body.innerHTML+=`<button class="choice" onclick="chooseSwapMine(${i})">${p.name}<br><span class="small">${p.hand.map(c=>c).join(" ")}</span></button>`;
     });
+    body.innerHTML+='</div>';
   }
 
   modal.style.display="flex";
@@ -1040,11 +1106,12 @@ function multiDraw(target, n){
 function chooseCard(kind,target){
   const body=document.getElementById("actionBody");
 
-  body.innerHTML=`<p>Choose a card from ${players[target].name}.</p>`;
+  body.innerHTML=`<p>Choose a card from ${players[target].name}.</p><div class="action-grid">`;
 
   players[target].hand.forEach((card,idx)=>{
-    body.innerHTML+=`<button class="choice" onclick="doCardAction('${kind}',${target},${idx})">${card}</button>`;
+    body.innerHTML+=`<button class="choice" onclick="doCardAction('${kind}',${target},${idx})">${cardImageHtml(card,false)}<br>${card}</button>`;
   });
+  body.innerHTML += `</div>`;
 }
 
 function doCardAction(kind,target,idx){
@@ -1070,11 +1137,12 @@ function chooseSwapMine(target){
 
   const body=document.getElementById("actionBody");
 
-  body.innerHTML=`<p>Choose ${players[pending.owner].name}'s card to swap.</p>`;
+  body.innerHTML=`<p>Choose ${players[pending.owner].name}'s card to swap.</p><div class="action-grid">`;
 
   players[pending.owner].hand.forEach((card,idx)=>{
-    body.innerHTML+=`<button class="choice" onclick="chooseSwapTheirs(${idx})">${card}</button>`;
+    body.innerHTML+=`<button class="choice" onclick="chooseSwapTheirs(${idx})">${cardImageHtml(card,false)}<br>${card}</button>`;
   });
+  body.innerHTML += `</div>`;
 }
 
 function chooseSwapTheirs(myIdx){
@@ -1083,11 +1151,12 @@ function chooseSwapTheirs(myIdx){
   const target=swapTemp.target;
   const body=document.getElementById("actionBody");
 
-  body.innerHTML=`<p>Choose ${players[target].name}'s card.</p>`;
+  body.innerHTML=`<p>Choose ${players[target].name}'s card.</p><div class="action-grid">`;
 
   players[target].hand.forEach((card,idx)=>{
-    body.innerHTML+=`<button class="choice" onclick="doSwap(${idx})">${card}</button>`;
+    body.innerHTML+=`<button class="choice" onclick="doSwap(${idx})">${cardImageHtml(card,false)}<br>${card}</button>`;
   });
+  body.innerHTML += `</div>`;
 }
 
 function doSwap(theirIdx){
