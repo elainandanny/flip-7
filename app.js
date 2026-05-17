@@ -22,8 +22,6 @@ let discard = [];
 let round = 1;
 let logLines = [];
 let gameStarted = false;
-let gameOver = false;
-let targetScore = 200;
 let pending = null;
 let swapTemp = null;
 let pendingRoundEnd = null;
@@ -94,8 +92,6 @@ function startGame(){
   swapTemp = null;
   logLines = [];
   gameStarted = true;
-  gameOver = false;
-  targetScore = Number(document.getElementById("targetScoreInput")?.value || 200);
 
   document.getElementById("setupCard").classList.add("hidden");
   document.getElementById("gameMenu").classList.remove("hidden");
@@ -105,10 +101,6 @@ function startGame(){
 }
 
 function showSetup(){
-  const gameOverModal = document.getElementById("gameOverModal");
-  if(gameOverModal) gameOverModal.style.display = "none";
-  gameOver = false;
-
   document.getElementById("setupCard").classList.remove("hidden");
   document.getElementById("gameMenu").classList.add("hidden");
 }
@@ -235,23 +227,6 @@ function actionChoiceButton(player, index, onclick){
     ${actionHandImages(player)}
   </button>`;
 }
-
-function actionOwnerHandPreview(owner){
-  const p = players[owner];
-  if(!p) return "";
-
-  const cards = p.hand.length
-    ? p.hand.map(c=>cardImageHtml(c,false,true)).join("")
-    : '<span class="small">No cards</span>';
-
-  return `
-    <div class="action-owner-hand">
-      <div class="action-owner-hand-title">${p.name}'s cards</div>
-      <div class="round-review-hand">${cards}</div>
-    </div>
-  `;
-}
-
 
 function toggleInfo(id){
   const el = document.getElementById(id);
@@ -398,11 +373,6 @@ function wouldBust(hand, card){
 }
 
 function hitActive(){
-  if(gameOver){
-    alert("Game is over. Start a new game from the menu.");
-    return;
-  }
-
   if(hasPendingAction()){
     alert(`Resolve ${pending.card} before anyone draws again.`);
     openAction(pending.card, pending.owner);
@@ -508,11 +478,6 @@ function bustPlayer(i){
 }
 
 function stayActive(){
-  if(gameOver){
-    alert("Game is over. Start a new game from the menu.");
-    return;
-  }
-
   if(hasPendingAction()){
     alert(`Resolve ${pending.card} before staying.`);
     openAction(pending.card, pending.owner);
@@ -596,71 +561,8 @@ function confirmRoundEnd(){
   endRound();
 }
 
-
-function checkGameOver(){
-  const reached = players.some(p => p.score >= targetScore);
-
-  if(!reached){
-    return false;
-  }
-
-  const highScore = Math.max(...players.map(p => p.score));
-  const winners = players.filter(p => p.score === highScore);
-
-  gameOver = true;
-
-  const leaderboard = [...players]
-    .sort((a,b)=>b.score-a.score)
-    .map((p,index)=>`${index+1}. ${p.name}: ${p.score}`)
-    .join("<br>");
-
-  const winnerText = winners.length === 1
-    ? `<b>${winners[0].name}</b> wins with <b>${highScore}</b> points!`
-    : `<b>Tie!</b> ${winners.map(p=>p.name).join(", ")} win with <b>${highScore}</b> points.`;
-
-  document.getElementById("gameOverTitle").innerText = "Game Over";
-  document.getElementById("gameOverBody").innerHTML = `
-    <p>${winnerText}</p>
-    <p>Target score: <b>${targetScore}</b></p>
-    <hr>
-    <p><b>Final leaderboard</b></p>
-    <p>${leaderboard}</p>
-  `;
-
-  document.getElementById("gameOverModal").style.display = "flex";
-
-  log(`Game over. ${winners.map(p=>p.name).join(", ")} win with ${highScore} points.`, true);
-  update();
-
-  return true;
-}
-
-
-function startNewGameFromGameOver(){
-  const modal = document.getElementById("gameOverModal");
-  if(modal) modal.style.display = "none";
-
-  gameOver = false;
-  gameStarted = false;
-  pending = null;
-  pendingRoundEnd = null;
-  players = [];
-  active = 0;
-  dealer = 0;
-  discard = [];
-  round = 1;
-  logLines = [];
-
-  showSetup();
-  update();
-}
-
-function closeGameOverModal(){
-  document.getElementById("gameOverModal").style.display = "none";
-}
-
 function endRound(){
-  if(!players.length || gameOver) return;
+  if(!players.length) return;
 
   players.forEach(p => {
     if(!p.busted) p.score += score(p.hand);
@@ -673,16 +575,11 @@ function endRound(){
     p.stayed = false;
   });
 
-  if(checkGameOver()){
-    return;
-  }
-
   dealer = (dealer + 1) % players.length;
   active = dealer;
   round++;
 
   log(`Round scored. Round ${round} begins. ${players[dealer].name} is the new dealer and starts.`, true);
-
   update();
 }
 
@@ -1301,48 +1198,6 @@ function simulateRoundFromState(firstAction, rootIndex){
   };
 }
 
-
-function buildDynamicReason(ev, mcts, player){
-  const rec = mcts.rec;
-  const hit = mcts.hitUtility;
-  const stay = mcts.stayUtility;
-  const diff = hit - stay;
-  const absDiff = Math.abs(diff).toFixed(1);
-  const bust = ev.bust.toFixed(1);
-  const f7 = ev.flip7.toFixed(1);
-  const round = ev.current;
-
-  if(version()==="vengeance" && player.hand.includes("Zero") && uniqueNumberCount(player.hand) < 7){
-    return `HIT because Zero is active. Staying would score 0 unless you complete Flip 7. Your Flip 7 chance is about ${f7}%.`;
-  }
-
-  if(player.hand.length === 0){
-    return "HIT because you have no cards yet.";
-  }
-
-  if(rec === "HIT"){
-    if(ev.bust >= 25){
-      return `HIT, but it is risky. Hit value (${hit.toFixed(1)}) is still higher than staying at ${round}, even with a ${bust}% bust chance.`;
-    }
-
-    if(ev.flip7 >= 20){
-      return `HIT because the upside is strong. Hit value (${hit.toFixed(1)}) beats stay value (${stay.toFixed(1)}), and your Flip 7 chance is about ${f7}%.`;
-    }
-
-    return `HIT because the expected hit value (${hit.toFixed(1)}) is ${absDiff} points better than staying (${stay.toFixed(1)}). Bust chance is ${bust}%.`;
-  }
-
-  if(ev.bust >= 20){
-    return `STAY because bust risk is high. Staying keeps ${round} points, while hitting has a ${bust}% bust chance.`;
-  }
-
-  if(diff < 0){
-    return `STAY because staying is worth more right now. Stay value (${stay.toFixed(1)}) is ${absDiff} points better than hit value (${hit.toFixed(1)}).`;
-  }
-
-  return `STAY because hitting does not improve your expected value enough. Current round score is ${round}, bust chance is ${bust}%.`;
-}
-
 function mctsDecision(rootIndex){
   // Stable advisor: uses current EV/bust/F7 metrics.
   // This avoids UI-breaking simulation crashes from action-card branches.
@@ -1391,7 +1246,7 @@ function mctsDecision(rootIndex){
     stayUtility: ev.current,
     confidence: Math.min(99, Math.round(Math.abs(diff) * 5)),
     hitBustRate: ev.bust,
-    note: "dynamic"
+    note: "Stable advisor compares the expected value of hitting against the current stay score."
   };
 }
 
@@ -1462,13 +1317,135 @@ function updateCornerRecommendation(rec){
   corner.className = `corner-recommend ${rec==="HIT" ? "hit" : "stay"}`;
 }
 
+
+let trueMctsWorker = null;
+let trueMctsJobId = 0;
+let latestMctsResult = null;
+let mctsProgressText = "";
+
+function isTrueMctsEnabled(){
+  return document.getElementById("mctsEnabled")?.value === "true" && showAdvice();
+}
+
+function getMctsBudgetMs(){
+  return Number(document.getElementById("mctsBudget")?.value || 500);
+}
+
+function initTrueMctsWorker(){
+  if(trueMctsWorker) return true;
+
+  if(!window.Worker){
+    console.warn("Web Workers are not supported in this browser.");
+    return false;
+  }
+
+  trueMctsWorker = new Worker("mcts-worker.js");
+
+  trueMctsWorker.onmessage = event => {
+    const msg = event.data;
+
+    if(!msg || msg.jobId !== trueMctsJobId) return;
+
+    if(msg.type === "progress"){
+      mctsProgressText = `Thinking… ${msg.sims} futures`;
+      renderMctsWorkerStatus();
+      return;
+    }
+
+    if(msg.type === "result"){
+      latestMctsResult = msg.result;
+      mctsProgressText = "";
+      renderMctsWorkerStatus();
+      renderTrueMctsResult();
+    }
+  };
+
+  trueMctsWorker.onerror = error => {
+    console.warn("MCTS worker error", error);
+    mctsProgressText = "MCTS worker error. Fast EV still active.";
+    renderMctsWorkerStatus();
+  };
+
+  return true;
+}
+
+function getWorkerState(){
+  return {
+    version: version(),
+    targetScore,
+    active,
+    dealer,
+    round,
+    discard,
+    players: players.map(p => ({
+      name: p.name,
+      hand: [...p.hand],
+      bustedHand: [...p.bustedHand],
+      stayed: p.stayed,
+      busted: p.busted,
+      score: p.score
+    }))
+  };
+}
+
+function requestTrueMcts(){
+  if(!isTrueMctsEnabled()) return;
+  if(!players.length || gameOver || pending) return;
+  if(!initTrueMctsWorker()) return;
+
+  trueMctsJobId++;
+  latestMctsResult = null;
+  mctsProgressText = "Thinking… starting simulations";
+  renderMctsWorkerStatus();
+
+  trueMctsWorker.postMessage({
+    type: "analyze",
+    jobId: trueMctsJobId,
+    state: getWorkerState(),
+    options: {
+      timeLimitMs: getMctsBudgetMs(),
+      maxSims: 50000
+    }
+  });
+}
+
+function renderMctsWorkerStatus(){
+  const el = document.getElementById("mctsWorkerStatus");
+  if(!el) return;
+
+  if(!isTrueMctsEnabled()){
+    el.innerHTML = "";
+    return;
+  }
+
+  if(mctsProgressText){
+    el.innerHTML = `<div class="mcts-working">${mctsProgressText}</div>`;
+  }
+}
+
+function renderTrueMctsResult(){
+  if(!latestMctsResult) return;
+
+  updateCornerRecommendation(latestMctsResult.bestMove);
+
+  const el = document.getElementById("mctsWorkerStatus");
+  if(!el) return;
+
+  el.innerHTML = `
+    <div class="mcts-working">
+      <b>True MCTS:</b> ${latestMctsResult.bestMove}
+      <span class="mcts-worker-badge">${latestMctsResult.simulations} futures</span><br>
+      HIT win: ${latestMctsResult.hitWinChance.toFixed(1)}% ·
+      STAY win: ${latestMctsResult.stayWinChance.toFixed(1)}% ·
+      ${latestMctsResult.elapsedMs} ms<br>
+      ${latestMctsResult.reason}
+    </div>
+  `;
+}
+
 function renderAdvice(){
   try {
   const p=players[active];
-
-  if(gameOver){
-    document.getElementById("turnTitle").innerText = "Game Over";
-  }
 
   if(!p){
     document.getElementById("turnTitle").innerText="Start a game";
@@ -1480,7 +1457,7 @@ function renderAdvice(){
 
   document.getElementById("turnDetails").innerHTML=
     `Version: <b>${cfg().name}</b> · Mode: <b>${mode()==="digital"?"Play in app":"Real-life tracker"}</b><br>
-     Dealer: <b>${players[dealer]?.name || ""}</b> · Target: <b>${targetScore}</b> · Deck cards left: <b>${remainingTotal()}</b>
+     Dealer: <b>${players[dealer]?.name || ""}</b> · Deck cards left: <b>${remainingTotal()}</b>
      ${pending && pending.card ? `<br><span class="pending-action-warning">Resolve ${pending.card} before anyone draws again.</span>` : ""}`;
 
   const adviceBox=document.getElementById("adviceBox");
@@ -1506,11 +1483,13 @@ function renderAdvice(){
       <div class="advice-tile" onclick="openMetricInfo('bustChance')"><span class="advice-label">Bust chance</span><span class="advice-value">${ev.bust.toFixed(1)}%</span></div>
       <div class="advice-tile" onclick="openMetricInfo('flip7Chance')"><span class="advice-label">Flip 7 chance</span><span class="advice-value">${ev.flip7.toFixed(1)}%</span></div>
       <div class="advice-tile" onclick="openMetricInfo('confidence')"><span class="advice-label">MCTS confidence</span><span class="advice-value">${mcts.confidence}%</span></div>
-      <div class="mcts-note">${buildDynamicReason(ev, mcts, p)}</div>
+      <div class="mcts-note">${mcts.note}</div>
     </div>
   `;
 
+  adviceBox.innerHTML += `<div id="mctsWorkerStatus"></div>`;
   odds.innerHTML=``;
+  requestTrueMcts();
 
   } catch(error) {
     console.warn("renderAdvice failed; showing fallback.", error);
@@ -1581,8 +1560,6 @@ function openAction(card, owner){
     autoDiscardUnplayableAction(card, owner, `no valid target for ${card}`);
     return;
   }
-
-  body.innerHTML += actionOwnerHandPreview(owner);
 
   if(card==="Freeze"){
     players[owner].stayed=true;
@@ -1782,7 +1759,7 @@ function chooseCard(kind,target){
 
   players[target].hand.forEach((card,idx)=>{
     if(!isPlayableCardTarget(card)) return;
-    body.innerHTML+=`<button class="choice" data-card-name="${card}" onclick="confirmCardAction('${kind}',${target},${idx})">${cardImageHtml(card,false,true)}</button>`;
+    body.innerHTML+=`<button class="choice" onclick="confirmCardAction('${kind}',${target},${idx})">${cardImageHtml(card,false,true)}<br>${card}</button>`;
   });
 
   body.innerHTML += `</div><button class="action-back" onclick="openAction(pending.card,pending.owner)">Choose different player</button>`;
@@ -1832,7 +1809,7 @@ function chooseSwapMine(target){
 
   players[pending.owner].hand.forEach((card,idx)=>{
     if(!isPlayableCardTarget(card)) return;
-    body.innerHTML+=`<button class="choice" data-card-name="${card}" onclick="chooseSwapTheirs(${idx})">${cardImageHtml(card,false,true)}</button>`;
+    body.innerHTML+=`<button class="choice" onclick="chooseSwapTheirs(${idx})">${cardImageHtml(card,false,true)}<br>${card}</button>`;
   });
   body.innerHTML += `</div><button class="action-back" onclick="openAction(pending.card,pending.owner)">Choose different player</button>`;
 }
@@ -1847,7 +1824,7 @@ function chooseSwapTheirs(myIdx){
 
   players[target].hand.forEach((card,idx)=>{
     if(!isPlayableCardTarget(card)) return;
-    body.innerHTML+=`<button class="choice" data-card-name="${card}" onclick="confirmSwap(${idx})">${cardImageHtml(card,false,true)}</button>`;
+    body.innerHTML+=`<button class="choice" onclick="confirmSwap(${idx})">${cardImageHtml(card,false,true)}<br>${card}</button>`;
   });
   body.innerHTML += `</div><button class="action-back" onclick="chooseSwapMine(${target})">Back to your cards</button><button class="action-back" onclick="openAction(pending.card,pending.owner)">Choose different player</button>`;
 }
@@ -1909,11 +1886,9 @@ showSetup();
 document.getElementById("turnTitle").innerText = "Press Start Game";
 document.getElementById("turnDetails").innerHTML = "Choose setup options, then press Start Game.";
 
-Object.assign(window,{openMetricInfo, closeMetricInfo, canResolvePendingAction, toggleInfo, updateCornerRecommendation, closeGameOverModal, checkGameOver, startNewGameFromGameOver
+Object.assign(window,{openMetricInfo, closeMetricInfo, canResolvePendingAction, toggleInfo, updateCornerRecommendation
 });
 
 
 window.openMetricInfo = openMetricInfo;
 window.closeMetricInfo = closeMetricInfo;
-
-window.startNewGameFromGameOver = startNewGameFromGameOver;

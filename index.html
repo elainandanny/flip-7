@@ -46,8 +46,8 @@
 
       <label>Mode</label>
       <select id="playMode" onchange="update()">
-        <option value="digital" selected>Play Game</option>
         <option value="tracker">Tracker</option>
+        <option value="digital">Play Game</option>
       </select>
 
       <label>Show odds/advice in digital play?</label>
@@ -56,8 +56,19 @@
         <option value="no">Hide odds and advice</option>
       </select>
 
-      <label>Target score</label>
-      <input id="targetScoreInput" type="number" min="1" value="200" />
+      <label>Strategy engine</label>
+      <select id="mctsEnabled" onchange="update()">
+        <option value="true" selected>True MCTS on this device</option>
+        <option value="false">Fast EV only</option>
+      </select>
+
+      <label>MCTS speed</label>
+      <select id="mctsBudget" onchange="update()">
+        <option value="250">Fast, about 250 ms</option>
+        <option value="500" selected>Balanced, about 500 ms</option>
+        <option value="1000">Deep, about 1 second</option>
+        <option value="2000">Very deep, about 2 seconds</option>
+      </select>
 
       <label>Number of players</label>
       <input id="playerCount" type="number" min="1" max="10" value="4" />
@@ -156,17 +167,6 @@ David</textarea>
     <div id="metricInfoBody" class="display"></div>
     <div class="compact-actions">
       <button onclick="closeMetricInfo()">Close</button>
-    </div>
-  </div>
-</div>
-
-<div id="gameOverModal" class="modal">
-  <div class="modal-content">
-    <h2 id="gameOverTitle">Game Over</h2>
-    <div id="gameOverBody" class="display"></div>
-    <div class="compact-actions">
-      <button class="green" onclick="startNewGameFromGameOver()">New Game</button>
-      <button onclick="closeGameOverModal()">Review Board</button>
     </div>
   </div>
 </div>

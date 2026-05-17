@@ -1,48 +1,46 @@
-# Flip 7 Local Device App
+# Flip 7 True MCTS Device Version
 
-This version runs fully on your device/browser.
+This version runs the strategy engine on your device in a Web Worker.
 
-No Firebase.
-No backend.
-No server calculation.
-Works on GitHub Pages.
+## What is different?
 
-## Files
+- The UI still runs in `app.js`.
+- Heavy calculations run in `mcts-worker.js`.
+- Your phone/browser simulates thousands of possible futures without freezing the screen.
+- No Firebase and no server are required.
 
+## Strategy Engine
+
+The worker estimates:
+- HIT vs STAY
+- win chance for each move
+- bust risk
+- future turns
+- opponent behavior
+- action-card approximations
+- game score and target score
+
+## Settings
+
+In the setup menu:
+- Strategy engine: True MCTS on this device
+- MCTS speed:
+  - Fast, about 250 ms
+  - Balanced, about 500 ms
+  - Deep, about 1 second
+  - Very deep, about 2 seconds
+
+## Running
+
+Upload all files to GitHub Pages.
+
+Required files:
 - `index.html`
 - `style.css`
 - `app.js`
-- `cards/classic/`
-- `cards/vengeance/`
+- `mcts-worker.js`
+- `cards/`
 
-## How to run on GitHub Pages
+## Note
 
-1. Create a GitHub repo.
-2. Upload all files and folders from this ZIP.
-3. Go to repo Settings.
-4. Go to Pages.
-5. Set source to `main` branch and `/root`.
-6. Open the GitHub Pages URL.
-
-## How to run locally
-
-You can double-click `index.html`.
-
-If images do not load locally because of browser restrictions, run a tiny local server:
-
-```bash
-python3 -m http.server 8000
-```
-
-Then open:
-
-```text
-http://localhost:8000
-```
-
-## Notes
-
-- All game logic runs in the browser.
-- The app stores no data online.
-- It is designed for phone/tablet use.
-- For multiplayer syncing later, Firebase can be added separately.
+This is intentionally time-limited. Instead of trying to calculate every possible future exactly, it simulates as many futures as it can within the selected time budget.
