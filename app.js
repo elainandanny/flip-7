@@ -230,6 +230,23 @@ function actionChoiceButton(player, index, onclick){
   </button>`;
 }
 
+function actionOwnerHandPreview(owner){
+  const p = players[owner];
+  if(!p) return "";
+
+  const cards = p.hand.length
+    ? p.hand.map(c=>cardImageHtml(c,false,true)).join("")
+    : '<span class="small">No cards</span>';
+
+  return `
+    <div class="action-owner-hand">
+      <div class="action-owner-hand-title">${p.name}'s cards</div>
+      <div class="round-review-hand">${cards}</div>
+    </div>
+  `;
+}
+
+
 function toggleInfo(id){
   const el = document.getElementById(id);
   if(el) el.classList.toggle("hidden");
@@ -1567,6 +1584,8 @@ function openAction(card, owner){
     return;
   }
 
+  body.innerHTML += actionOwnerHandPreview(owner);
+
   if(card==="Freeze"){
     players[owner].stayed=true;
     log(`${players[owner].name} is frozen/stays.`);
@@ -1765,7 +1784,7 @@ function chooseCard(kind,target){
 
   players[target].hand.forEach((card,idx)=>{
     if(!isPlayableCardTarget(card)) return;
-    body.innerHTML+=`<button class="choice" onclick="confirmCardAction('${kind}',${target},${idx})">${cardImageHtml(card,false,true)}<br>${card}</button>`;
+    body.innerHTML+=`<button class="choice" data-card-name="${card}" onclick="confirmCardAction('${kind}',${target},${idx})">${cardImageHtml(card,false,true)}</button>`;
   });
 
   body.innerHTML += `</div><button class="action-back" onclick="openAction(pending.card,pending.owner)">Choose different player</button>`;
@@ -1815,7 +1834,7 @@ function chooseSwapMine(target){
 
   players[pending.owner].hand.forEach((card,idx)=>{
     if(!isPlayableCardTarget(card)) return;
-    body.innerHTML+=`<button class="choice" onclick="chooseSwapTheirs(${idx})">${cardImageHtml(card,false,true)}<br>${card}</button>`;
+    body.innerHTML+=`<button class="choice" data-card-name="${card}" onclick="chooseSwapTheirs(${idx})">${cardImageHtml(card,false,true)}</button>`;
   });
   body.innerHTML += `</div><button class="action-back" onclick="openAction(pending.card,pending.owner)">Choose different player</button>`;
 }
@@ -1830,7 +1849,7 @@ function chooseSwapTheirs(myIdx){
 
   players[target].hand.forEach((card,idx)=>{
     if(!isPlayableCardTarget(card)) return;
-    body.innerHTML+=`<button class="choice" onclick="confirmSwap(${idx})">${cardImageHtml(card,false,true)}<br>${card}</button>`;
+    body.innerHTML+=`<button class="choice" data-card-name="${card}" onclick="confirmSwap(${idx})">${cardImageHtml(card,false,true)}</button>`;
   });
   body.innerHTML += `</div><button class="action-back" onclick="chooseSwapMine(${target})">Back to your cards</button><button class="action-back" onclick="openAction(pending.card,pending.owner)">Choose different player</button>`;
 }

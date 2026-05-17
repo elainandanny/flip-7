@@ -11,13 +11,32 @@ self.onmessage = event => {
 
   currentJobId = msg.jobId;
 
-  const result = analyzeMCTS(msg.state, msg.options || {}, msg.jobId);
+  try {
+    const result = analyzeMCTS(msg.state, msg.options || {}, msg.jobId);
 
-  if(currentJobId === msg.jobId){
+    if(currentJobId === msg.jobId){
+      self.postMessage({
+        type: "result",
+        jobId: msg.jobId,
+        result
+      });
+    }
+  } catch(error) {
     self.postMessage({
       type: "result",
       jobId: msg.jobId,
-      result
+      result: {
+        bestMove: "HIT",
+        simulations: 0,
+        elapsedMs: 0,
+        hitValue: 0,
+        stayValue: 0,
+        hitWinChance: 0,
+        stayWinChance: 0,
+        hitBustChance: 0,
+        confidence: 0,
+        reason: "MCTS worker fallback: " + error.message
+      }
     });
   }
 };
@@ -392,6 +411,17 @@ function resolveActionApprox(sim, deck, owner, card){
 
     removeOne(actor.hand, card);
   }
+}
+
+
+function removeOne(hand, card){
+  if(!Array.isArray(hand)) return false;
+  const idx = hand.indexOf(card);
+  if(idx >= 0){
+    hand.splice(idx, 1);
+    return true;
+  }
+  return false;
 }
 
 function chooseHighestHand(list){
