@@ -91,6 +91,7 @@ David</textarea>
       <div class="compact-actions two-actions">
         <button class="green" id="hitButton" onclick="hitActive()">HIT</button>
         <button class="red" onclick="stayActive()">STAY</button>
+        <button class="purple" id="pendingActionButton" onclick="reopenPendingAction()" style="display:none">Action</button>
       </div>
     </div>
 
@@ -137,6 +138,7 @@ David</textarea>
   <div class="modal-content">
     <h2 id="roundMessageTitle">Round Over</h2>
     <div id="roundMessageBody" class="display"></div>
+    <div id="roundReview" class="round-review"></div>
     <div class="compact-actions">
       <button class="green" onclick="confirmRoundEnd()">Start Next Round</button>
     </div>
@@ -144,10 +146,13 @@ David</textarea>
 </div>
 
 <div id="actionModal" class="modal">
-  <div class="modal-content">
-    <h2 id="actionTitle">Resolve Action</h2>
+  <div class="modal-content action-modal-content">
+    <div class="action-modal-head">
+      <h2 id="actionTitle">Resolve Action</h2>
+      <button class="mini-close" onclick="closeActionModal()">×</button>
+    </div>
     <div id="actionBody"></div>
-    <div class="small" style="margin-top:10px">Choose a valid action below. Stayed players are still targetable; busted players are not.</div>
+    <div class="small" style="margin-top:10px">You may close this panel to review player hands, then reopen the pending action from the top controls.</div>
   </div>
 </div>
 <script src="app.js" defer></script>

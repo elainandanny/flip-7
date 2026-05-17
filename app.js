@@ -25,6 +25,7 @@ let gameStarted = false;
 let pending = null;
 let swapTemp = null;
 let pendingRoundEnd = null;
+let pendingCardChoice = null;
 
 function cfg(){ return CONFIGS[document.getElementById("gameVersion").value]; }
 function version(){ return document.getElementById("gameVersion").value; }
@@ -161,6 +162,30 @@ function val(card){
 
 function isAction(card){ return cfg().actions.includes(card); }
 function isModifier(card){ return cfg().modifiers.includes(card); }
+
+function isStealSwapTarget(card){
+  // Action cards resolve immediately and are discarded; they are not valid steal/swap/discard targets.
+  return !isAction(card);
+}
+
+function updatePendingActionButton(){
+  const btn = document.getElementById("pendingActionButton");
+  if(!btn) return;
+
+  if(pending && pending.card){
+    btn.style.display = "block";
+    btn.innerText = `Resolve ${pending.card}`;
+  } else {
+    btn.style.display = "none";
+  }
+}
+
+function reopenPendingAction(){
+  if(pending && pending.card){
+    openAction(pending.card, pending.owner);
+  }
+}
+
 
 function cleanVengeanceHand(cards){
   if(!cards.includes("Unlucky 7")) return {hand:cards, removed:[]};
@@ -385,10 +410,33 @@ function nextTurn(){
   }
 }
 
+
+function renderRoundReview(){
+  const review = document.getElementById("roundReview");
+  if(!review) return;
+
+  review.innerHTML = players.map(p => {
+    const visibleCards = p.busted ? p.bustedHand : p.hand;
+    const roundScore = p.busted ? 0 : score(p.hand);
+    const cards = visibleCards.map(c => cardImageHtml(c, p.busted)).join("") || '<span class="small">No cards</span>';
+
+    return `
+      <div class="round-review-player">
+        <div class="round-review-head">
+          <b>${p.name}</b>
+          <span>${p.busted ? "BUSTED" : p.stayed ? "STAYED" : "ACTIVE"} · Round: ${roundScore}</span>
+        </div>
+        <div class="round-review-hand">${cards}</div>
+      </div>
+    `;
+  }).join("");
+}
+
 function showRoundEndPrompt(message){
   pendingRoundEnd = true;
   document.getElementById("roundMessageTitle").innerText = "Round Over";
   document.getElementById("roundMessageBody").innerHTML = message;
+  renderRoundReview();
   document.getElementById("roundMessageModal").style.display = "flex";
   update();
 }
@@ -693,6 +741,376 @@ function renderPlayers(){
   });
 }
 
+
+
+function randomDrawFromDeckObject(deck){
+  const total = Object.values(deck).reduce((a,b)=>a+b,0);
+  if(total <= 0) return null;
+
+  let r = Math.floor(Math.random() * total);
+
+  for(const [card,count] of Object.entries(deck)){
+    if(count <= 0) continue;
+    if(r < count){
+      deck[card]--;
+      return card;
+    }
+    r -= count;
+  }
+
+  return null;
+}
+
+function clonePlayersForSim(){
+  return players.map(p => ({
+    name: p.name,
+    hand: [...p.hand],
+    bustedHand: [...p.bustedHand],
+    stayed: p.stayed,
+    busted: p.busted,
+    score: p.score
+  }));
+}
+
+function simUniqueNumberCount(hand){
+  return new Set(hand.filter(isNumber).map(id)).size;
+}
+
+function simScore(hand){
+  return score(hand);
+}
+
+function simHasFlip7(player){
+  return simUniqueNumberCount(player.hand) >= 7;
+}
+
+function simWouldBust(hand, card){
+  return wouldBust(hand, card);
+}
+
+function simCleanHand(hand){
+  if(version() !== "vengeance") return hand;
+  return cleanVengeanceHand(hand).hand;
+}
+
+function simReceiveCard(simPlayers, playerIndex, card){
+  const p = simPlayers[playerIndex];
+
+  if(p.busted || p.stayed) return "none";
+
+  if(simWouldBust(p.hand, card)){
+    if(version()==="classic" && p.hand.includes("Second Chance")){
+      const idx = p.hand.indexOf("Second Chance");
+      if(idx >= 0) p.hand.splice(idx, 1);
+      return "saved";
+    }
+
+    p.hand.push(card);
+    p.bustedHand = [...p.hand];
+    p.hand = [];
+    p.busted = true;
+    p.stayed = false;
+    return "bust";
+  }
+
+  p.hand.push(card);
+
+  if(version()==="vengeance" && card==="Unlucky 7"){
+    p.hand = simCleanHand(p.hand);
+  }
+
+  if(simHasFlip7(p)){
+    return "flip7";
+  }
+
+  return "safe";
+}
+
+function simPolicyShouldHit(player, deck){
+  if(player.busted || player.stayed) return false;
+
+  const current = simScore(player.hand);
+  const unique = simUniqueNumberCount(player.hand);
+
+  if(version()==="vengeance" && player.hand.includes("Zero") && unique < 7){
+    return true;
+  }
+
+  if(unique >= 6){
+    return true;
+  }
+
+  const total = Object.values(deck).reduce((a,b)=>a+b,0);
+  if(total <= 0) return false;
+
+  let bustCards = 0;
+
+  Object.entries(deck).forEach(([card,count]) => {
+    if(count > 0 && simWouldBust(player.hand, card)){
+      bustCards += count;
+    }
+  });
+
+  const bustChance = bustCards / total;
+
+  if(current < 12) return true;
+  if(current < 22 && bustChance < 0.22) return true;
+  if(current < 32 && bustChance < 0.14) return true;
+
+  return false;
+}
+
+function simResolveActionApprox(simPlayers, actorIndex, card, deck){
+  // Approximate action cards so MCTS stays fast.
+  // It models the strategic direction, not every exact human choice.
+
+  const actor = simPlayers[actorIndex];
+
+  if(card==="Freeze"){
+    actor.stayed = true;
+    return;
+  }
+
+  const candidates = simPlayers
+    .map((p,i)=>({p,i}))
+    .filter(x => !x.p.busted && x.p.hand.some(isStealSwapTarget));
+
+  const opponents = candidates.filter(x => x.i !== actorIndex);
+
+  if(card==="Steal" && opponents.length){
+    opponents.sort((a,b)=>simScore(b.p.hand)-simScore(a.p.hand));
+    const target = opponents[0].p;
+    const bestIndex = target.hand
+      .map((c,idx)=>({c,idx}))
+      .filter(x=>isStealSwapTarget(x.c))
+      .sort((a,b)=>valSafe(b.c)-valSafe(a.c))[0]?.idx ?? 0;
+    const stolen = target.hand.splice(bestIndex,1)[0];
+    if(stolen) actor.hand.push(stolen);
+    return;
+  }
+
+  if(card==="Discard" && candidates.length){
+    candidates.sort((a,b)=>simScore(b.p.hand)-simScore(a.p.hand));
+    const target = candidates[0].p;
+    const bestIndex = target.hand
+      .map((c,idx)=>({c,idx}))
+      .filter(x=>isStealSwapTarget(x.c))
+      .sort((a,b)=>valSafe(b.c)-valSafe(a.c))[0]?.idx ?? 0;
+    target.hand.splice(bestIndex,1);
+    return;
+  }
+
+  if(card==="Swap" && opponents.length && actor.hand.length){
+    opponents.sort((a,b)=>simScore(b.p.hand)-simScore(a.p.hand));
+    const target = opponents[0].p;
+    if(target.hand.length){
+      const actorWorst = actor.hand
+        .map((c,idx)=>({c,idx}))
+        .filter(x=>isStealSwapTarget(x.c))
+        .sort((a,b)=>valSafe(a.c)-valSafe(b.c))[0].idx;
+      const targetBest = target.hand
+        .map((c,idx)=>({c,idx}))
+        .filter(x=>isStealSwapTarget(x.c))
+        .sort((a,b)=>valSafe(b.c)-valSafe(a.c))[0].idx;
+      const tmp = actor.hand[actorWorst];
+      actor.hand[actorWorst] = target.hand[targetBest];
+      target.hand[targetBest] = tmp;
+    }
+    return;
+  }
+
+  if(card==="Just One More"){
+    const targets = simPlayers
+      .map((p,i)=>({p,i}))
+      .filter(x=>!x.p.busted);
+
+    if(targets.length){
+      targets.sort((a,b)=>simScore(b.p.hand)-simScore(a.p.hand));
+      const t = targets[0];
+      const drawn = randomDrawFromDeckObject(deck);
+      if(drawn) simReceiveCard(simPlayers, t.i, drawn);
+      if(!t.p.busted) t.p.stayed = true;
+    }
+    return;
+  }
+
+  if(card==="Flip Four" || card==="Flip Three"){
+    const maxDraws = card==="Flip Four" ? 4 : 3;
+    const targets = simPlayers
+      .map((p,i)=>({p,i}))
+      .filter(x=>!x.p.busted);
+
+    if(targets.length){
+      targets.sort((a,b)=>simScore(b.p.hand)-simScore(a.p.hand));
+      const t = targets[0];
+
+      for(let k=0;k<maxDraws;k++){
+        if(t.p.busted || simHasFlip7(t.p)) break;
+        const drawn = randomDrawFromDeckObject(deck);
+        if(!drawn) break;
+        const result = simReceiveCard(simPlayers, t.i, drawn);
+        if(result==="bust" || result==="flip7") break;
+      }
+    }
+  }
+}
+
+function valSafe(card){
+  if(!isNumber(card)) return 0;
+  return val(card);
+}
+
+function simulateRoundFromState(firstAction, rootIndex){
+  const simPlayers = clonePlayersForSim();
+  const deck = getDeck();
+  let simActive = active;
+  let safety = 0;
+  let immediateResult = "none";
+
+  if(firstAction === "STAY"){
+    simPlayers[rootIndex].stayed = true;
+  } else {
+    const drawn = randomDrawFromDeckObject(deck);
+    if(!drawn){
+      simPlayers[rootIndex].stayed = true;
+    } else {
+      immediateResult = simReceiveCard(simPlayers, rootIndex, drawn);
+
+      if(cfg().actions.includes(drawn)){
+        simResolveActionApprox(simPlayers, rootIndex, drawn, deck);
+      }
+    }
+  }
+
+  while(
+    safety < 220 &&
+    !simPlayers.every(p=>p.stayed || p.busted)
+  ){
+    safety++;
+
+    for(let step=0; step<simPlayers.length; step++){
+      const idx = (simActive + step) % simPlayers.length;
+      const p = simPlayers[idx];
+
+      if(p.stayed || p.busted) continue;
+
+      simActive = idx;
+
+      if(simPolicyShouldHit(p, deck)){
+        const drawn = randomDrawFromDeckObject(deck);
+        if(!drawn){
+          p.stayed = true;
+          break;
+        }
+
+        const result = simReceiveCard(simPlayers, idx, drawn);
+
+        if(cfg().actions.includes(drawn)){
+          simResolveActionApprox(simPlayers, idx, drawn, deck);
+        }
+
+        if(result === "flip7"){
+          safety = 999;
+          break;
+        }
+      } else {
+        p.stayed = true;
+      }
+
+      break;
+    }
+  }
+
+  const rootRound = simPlayers[rootIndex].busted ? 0 : simScore(simPlayers[rootIndex].hand);
+  const opponentBest = Math.max(
+    ...simPlayers
+      .filter((_,i)=>i!==rootIndex)
+      .map(p=>p.busted ? 0 : simScore(p.hand)),
+    0
+  );
+
+  const rootTotal = simPlayers[rootIndex].score + rootRound;
+  const bestOpponentTotal = Math.max(
+    ...simPlayers
+      .filter((_,i)=>i!==rootIndex)
+      .map(p=>p.score + (p.busted ? 0 : simScore(p.hand))),
+    0
+  );
+
+  return {
+    utility: rootRound - (0.55 * opponentBest) + (0.25 * (rootTotal - bestOpponentTotal)),
+    roundScore: rootRound,
+    busted: simPlayers[rootIndex].busted,
+    immediateResult
+  };
+}
+
+function mctsDecision(rootIndex){
+  const p = players[rootIndex];
+
+  if(!p || p.busted || p.stayed){
+    return {
+      rec: "STAY",
+      hitUtility: 0,
+      stayUtility: 0,
+      confidence: 0,
+      hitBustRate: 0,
+      note: "Player is not active."
+    };
+  }
+
+  if(p.hand.length === 0){
+    return {
+      rec: "HIT",
+      hitUtility: 0,
+      stayUtility: 0,
+      confidence: 100,
+      hitBustRate: 0,
+      note: "No cards yet. Hit to start."
+    };
+  }
+
+  if(version()==="vengeance" && p.hand.includes("Zero") && simUniqueNumberCount(p.hand) < 7){
+    return {
+      rec: "HIT",
+      hitUtility: 0,
+      stayUtility: 0,
+      confidence: 100,
+      hitBustRate: 0,
+      note: "Zero is active. Staying scores 0 unless you reach Flip 7."
+    };
+  }
+
+  const simulations = mode()==="digital" ? 450 : 300;
+
+  let hitSum = 0;
+  let staySum = 0;
+  let hitBusts = 0;
+
+  for(let i=0;i<simulations;i++){
+    const h = simulateRoundFromState("HIT", rootIndex);
+    const s = simulateRoundFromState("STAY", rootIndex);
+
+    hitSum += h.utility;
+    staySum += s.utility;
+
+    if(h.busted) hitBusts++;
+  }
+
+  const hitUtility = hitSum / simulations;
+  const stayUtility = staySum / simulations;
+  const diff = hitUtility - stayUtility;
+
+  return {
+    rec: diff > 0 ? "HIT" : "STAY",
+    hitUtility,
+    stayUtility,
+    confidence: Math.min(99, Math.round(Math.abs(diff) * 4)),
+    hitBustRate: (hitBusts / simulations) * 100,
+    note: "MCTS simulates future turns, opponent hands, actions, busts, and round score outcomes."
+  };
+}
+
 function renderAdvice(){
   const p=players[active];
 
@@ -718,17 +1136,18 @@ function renderAdvice(){
   }
 
   const ev=evalPlayer(p);
+  const mcts=mctsDecision(active);
 
   adviceBox.innerHTML=`
     <div class="advice-grid">
-      <div class="advice-tile recommend ${ev.rec==="HIT"?"hit":"stay"}">${ev.rec}</div>
+      <div class="advice-tile recommend ${mcts.rec==="HIT"?"hit":"stay"}">${mcts.rec}</div>
+      <div class="advice-tile mcts-tile"><span class="advice-label">MCTS hit value</span><span class="advice-value">${mcts.hitUtility.toFixed(1)}</span></div>
+      <div class="advice-tile mcts-tile"><span class="advice-label">MCTS stay value</span><span class="advice-value">${mcts.stayUtility.toFixed(1)}</span></div>
       <div class="advice-tile"><span class="advice-label">Round score</span><span class="advice-value">${ev.current}</span></div>
-      <div class="advice-tile"><span class="advice-label">EV if hit</span><span class="advice-value">${ev.ev.toFixed(2)}</span></div>
       <div class="advice-tile"><span class="advice-label">Bust chance</span><span class="advice-value">${ev.bust.toFixed(1)}%</span></div>
       <div class="advice-tile"><span class="advice-label">Flip 7 chance</span><span class="advice-value">${ev.flip7.toFixed(1)}%</span></div>
-      <div class="advice-tile"><span class="advice-label">Improve chance</span><span class="advice-value">${ev.improve.toFixed(1)}%</span></div>
-      <div class="advice-tile"><span class="advice-label">Bust cards</span><span class="advice-value">${ev.bustCards}</span></div>
-      <div class="reason">${ev.reason}</div>
+      <div class="advice-tile"><span class="advice-label">MCTS confidence</span><span class="advice-value">${mcts.confidence}%</span></div>
+      <div class="mcts-note">${mcts.note}</div>
     </div>
   `;
 
@@ -763,6 +1182,7 @@ function update(){
   renderCardGrid("deckGrid", false);
   renderDiscard();
   renderLog();
+  updatePendingActionButton();
 }
 
 function validTargets(includeStayed=true){
@@ -776,8 +1196,8 @@ function openAction(card, owner){
   const title=document.getElementById("actionTitle");
   const body=document.getElementById("actionBody");
 
-  title.innerText=`Resolve ${card}`;
-  body.innerHTML="";
+  title.innerText=`${players[owner].name}'s Action: ${card}`;
+  body.innerHTML=`<div class="hand-preview"><b>Current hands</b>${players.map((pl,idx)=>`<div class="small">${pl.name}${idx===owner?" (action owner)":""}: ${pl.busted?"BUSTED":(pl.hand.join(" ") || "No cards")}</div>`).join("")}</div>`;
 
   if(card==="Freeze"){
     players[owner].stayed=true;
@@ -796,7 +1216,7 @@ function openAction(card, owner){
   }
 
   if(card==="Just One More"){
-    body.innerHTML='<p>Choose any non-busted player. They draw one card and then stay.</p><div class="action-grid">';
+    body.innerHTML+='<p>Choose any non-busted player. They draw one card and then stay.</p><div class="action-grid">';
     validTargets(true).forEach(({p,i})=>{
       body.innerHTML+=`<button class="choice" onclick="justOneMore(${i})">${p.name}<br><span class="small">${p.hand.map(c=>c).join(" ") || "No cards"}</span></button>`;
     });
@@ -804,7 +1224,7 @@ function openAction(card, owner){
   }
 
   if(card==="Flip Four"){
-    body.innerHTML='<p>Choose any non-busted player. They draw up to 4 cards. Stop on bust or Flip 7.</p><div class="action-grid">';
+    body.innerHTML+='<p>Choose any non-busted player. They draw up to 4 cards. Stop on bust or Flip 7.</p><div class="action-grid">';
     validTargets(true).forEach(({p,i})=>{
       body.innerHTML+=`<button class="choice" onclick="multiDraw(${i},4)">${p.name}<br><span class="small">${p.hand.map(c=>c).join(" ") || "No cards"}</span></button>`;
     });
@@ -812,24 +1232,24 @@ function openAction(card, owner){
   }
 
   if(card==="Steal"){
-    body.innerHTML='<p>Choose a non-busted player to steal a card from. Stayed players can be targeted.</p><div class="action-grid">';
-    validTargets(true).filter(x=>x.i!==owner && x.p.hand.length).forEach(({p,i})=>{
+    body.innerHTML+='<p>Choose a non-busted player to steal a card from. Stayed players can be targeted.</p><div class="action-grid">';
+    validTargets(true).filter(x=>x.i!==owner && x.p.hand.some(isStealSwapTarget)).forEach(({p,i})=>{
       body.innerHTML+=`<button class="choice" onclick="chooseCard('steal',${i})">${p.name}<br><span class="small">${p.hand.map(c=>c).join(" ")}</span></button>`;
     });
     body.innerHTML+='</div>';
   }
 
   if(card==="Discard"){
-    body.innerHTML='<p>Choose a non-busted player and discard one of their cards.</p><div class="action-grid">';
-    validTargets(true).filter(x=>x.p.hand.length).forEach(({p,i})=>{
+    body.innerHTML+='<p>Choose a non-busted player and discard one of their cards.</p><div class="action-grid">';
+    validTargets(true).filter(x=>x.p.hand.some(isStealSwapTarget)).forEach(({p,i})=>{
       body.innerHTML+=`<button class="choice" onclick="chooseCard('discard',${i})">${p.name}<br><span class="small">${p.hand.map(c=>c).join(" ")}</span></button>`;
     });
     body.innerHTML+='</div>';
   }
 
   if(card==="Swap"){
-    body.innerHTML='<p>Choose a non-busted player to swap cards with.</p><div class="action-grid">';
-    validTargets(true).filter(x=>x.i!==owner && x.p.hand.length && players[owner].hand.length).forEach(({p,i})=>{
+    body.innerHTML+='<p>Choose a non-busted player to swap cards with.</p><div class="action-grid">';
+    validTargets(true).filter(x=>x.i!==owner && x.p.hand.some(isStealSwapTarget) && players[owner].hand.some(isStealSwapTarget)).forEach(({p,i})=>{
       body.innerHTML+=`<button class="choice" onclick="chooseSwapMine(${i})">${p.name}<br><span class="small">${p.hand.map(c=>c).join(" ")}</span></button>`;
     });
     body.innerHTML+='</div>';
@@ -910,12 +1330,30 @@ function multiDraw(target, n){
 function chooseCard(kind,target){
   const body=document.getElementById("actionBody");
 
-  body.innerHTML=`<p>Choose a card from ${players[target].name}.</p><div class="action-grid">`;
+  body.innerHTML=`<p>Choose a card from ${players[target].name}. Action cards are not valid targets.</p><div class="action-grid">`;
 
   players[target].hand.forEach((card,idx)=>{
-    body.innerHTML+=`<button class="choice" onclick="doCardAction('${kind}',${target},${idx})">${cardImageHtml(card,false)}<br>${card}</button>`;
+    if(!isStealSwapTarget(card)) return;
+    body.innerHTML+=`<button class="choice" onclick="confirmCardAction('${kind}',${target},${idx})">${cardImageHtml(card,false)}<br>${card}</button>`;
   });
+
   body.innerHTML += `</div>`;
+}
+
+function confirmCardAction(kind,target,idx){
+  const card = players[target].hand[idx];
+  const verb = kind === "steal" ? "steal" : "discard";
+
+  document.getElementById("actionBody").innerHTML = `
+    <div class="confirm-box">
+      <p>Confirm: ${verb.toUpperCase()} <b>${card}</b> from <b>${players[target].name}</b>?</p>
+      <div class="round-review-hand">${cardImageHtml(card,false)}</div>
+      <div class="compact-actions">
+        <button class="green" onclick="doCardAction('${kind}',${target},${idx})">Confirm</button>
+        <button onclick="chooseCard('${kind}',${target})">Back</button>
+      </div>
+    </div>
+  `;
 }
 
 function doCardAction(kind,target,idx){
@@ -944,6 +1382,7 @@ function chooseSwapMine(target){
   body.innerHTML=`<p>Choose ${players[pending.owner].name}'s card to swap.</p><div class="action-grid">`;
 
   players[pending.owner].hand.forEach((card,idx)=>{
+    if(!isStealSwapTarget(card)) return;
     body.innerHTML+=`<button class="choice" onclick="chooseSwapTheirs(${idx})">${cardImageHtml(card,false)}<br>${card}</button>`;
   });
   body.innerHTML += `</div>`;
@@ -958,9 +1397,33 @@ function chooseSwapTheirs(myIdx){
   body.innerHTML=`<p>Choose ${players[target].name}'s card.</p><div class="action-grid">`;
 
   players[target].hand.forEach((card,idx)=>{
-    body.innerHTML+=`<button class="choice" onclick="doSwap(${idx})">${cardImageHtml(card,false)}<br>${card}</button>`;
+    if(!isStealSwapTarget(card)) return;
+    body.innerHTML+=`<button class="choice" onclick="confirmSwap(${idx})">${cardImageHtml(card,false)}<br>${card}</button>`;
   });
   body.innerHTML += `</div>`;
+}
+
+function confirmSwap(theirIdx){
+  const owner=pending.owner;
+  const target=swapTemp.target;
+  const myIdx=swapTemp.myIdx;
+
+  const myCard = players[owner].hand[myIdx];
+  const theirCard = players[target].hand[theirIdx];
+
+  document.getElementById("actionBody").innerHTML = `
+    <div class="confirm-box">
+      <p>Confirm swap?</p>
+      <p><b>${players[owner].name}</b>: ${myCard}</p>
+      <div class="round-review-hand">${cardImageHtml(myCard,false)}</div>
+      <p><b>${players[target].name}</b>: ${theirCard}</p>
+      <div class="round-review-hand">${cardImageHtml(theirCard,false)}</div>
+      <div class="compact-actions">
+        <button class="green" onclick="doSwap(${theirIdx})">Confirm</button>
+        <button onclick="chooseSwapTheirs(${myIdx})">Back</button>
+      </div>
+    </div>
+  `;
 }
 
 function doSwap(theirIdx){

@@ -314,3 +314,133 @@
     padding-right: 4px;
   }
 }
+
+
+.mcts-tile {
+  border: 1px solid #6d5dfc;
+  box-shadow: 0 0 0 1px rgba(165,110,255,.25);
+}
+
+.mcts-note {
+  grid-column: 1 / -1;
+  background: #171225;
+  border: 1px solid #6d5dfc;
+  border-radius: 10px;
+  padding: 8px;
+  font-size: 13px;
+  color: #e8ddff;
+}
+
+
+/* Smaller dashboard + review/action updates */
+.player-row {
+  grid-template-columns: 78px 48px 48px minmax(100px, 1fr);
+  gap: 4px;
+  padding: 5px;
+}
+
+.player-name-main {
+  font-size: 12px;
+}
+
+.player-status-mini,
+.dashboard-note {
+  font-size: 10px;
+}
+
+.player-stat-mini {
+  font-size: 10px;
+  padding: 4px 2px;
+}
+
+.player-stat-mini b {
+  font-size: 13px;
+}
+
+.hand-strip .card-img-wrap {
+  width: 30px;
+  height: 42px;
+}
+
+.round-review {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 8px;
+  margin-top: 10px;
+  max-height: 55vh;
+  overflow: auto;
+}
+
+.round-review-player {
+  background: #111620;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 8px;
+}
+
+.round-review-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 13px;
+  margin-bottom: 6px;
+}
+
+.round-review-hand {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
+.round-review-hand .card-img-wrap {
+  width: 42px;
+  height: 59px;
+}
+
+.action-modal-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+}
+
+.action-modal-head h2 {
+  margin: 0;
+}
+
+.mini-close {
+  width: 38px;
+  height: 38px;
+  padding: 0;
+  font-size: 26px;
+  line-height: 1;
+  background: #2c3342;
+}
+
+.confirm-box {
+  background: #111620;
+  border: 1px solid var(--purple);
+  border-radius: 10px;
+  padding: 10px;
+  margin-top: 10px;
+}
+
+.pending-action-warning {
+  background: #221a33;
+  border: 1px solid var(--purple);
+  color: #eadcff;
+  border-radius: 10px;
+  padding: 8px;
+  margin-top: 8px;
+  font-size: 13px;
+}
+
+@media(max-width:480px){
+  .player-row {
+    grid-template-columns: 72px 42px 42px minmax(88px, 1fr);
+  }
+  .hand-strip .card-img-wrap {
+    width: 27px;
+    height: 38px;
+  }
+}
