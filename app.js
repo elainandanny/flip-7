@@ -43,6 +43,7 @@ function fileNameForCard(card){
 }
 
 function cardImagePath(card){
+  if(isInternalMarker(card)) return "";
   return `cards/${version()}/${fileNameForCard(card)}`;
 }
 
@@ -149,6 +150,7 @@ function drawRandomCard(){
 }
 
 function isNumber(card){
+  if(isInternalMarker(card)) return false;
   if(version()==="vengeance"){
     return /^\d+$/.test(card) || ["Zero","Unlucky 7","Lucky 13"].includes(card);
   }
@@ -156,6 +158,7 @@ function isNumber(card){
 }
 
 function id(card){
+  if(isInternalMarker(card)) return "";
   if(card==="Zero") return "0";
   if(card==="Unlucky 7") return "7";
   if(card==="Lucky 13") return "13L";
@@ -163,6 +166,7 @@ function id(card){
 }
 
 function val(card){
+  if(isInternalMarker(card)) return 0;
   if(card==="Zero") return 0;
   if(card==="Unlucky 7") return 7;
   if(card==="Lucky 13") return 13;
@@ -174,7 +178,7 @@ function isAction(card){ return cfg().actions.includes(card); }
 function isModifier(card){ return cfg().modifiers.includes(card); }
 
 function isPlayableCardTarget(card){
-  return !isAction(card);
+  return !isAction(card) && !isInternalMarker(card);
 }
 
 function playerHasPlayableTarget(player){
@@ -243,7 +247,7 @@ function actionOwnerHandPreview(owner){
   if(!p) return "";
 
   const cards = p.hand && p.hand.length
-    ? p.hand.map(c=>cardImageHtml(c,false,true)).join("")
+    ? visibleCards(p.hand).map(c=>cardImageHtml(c,false,true)).join("")
     : '<span class="small">No cards</span>';
 
   return `
@@ -283,7 +287,7 @@ function handHasDuplicateNumber(hand){
 
 function isPlayableCardTarget(card){
   // Action cards resolve immediately and are discarded; they are not valid steal/swap/discard targets.
-  return !isAction(card);
+  return !isAction(card) && !isInternalMarker(card);
 }
 
 
@@ -341,11 +345,21 @@ function reopenPendingAction(){
 function cleanVengeanceHand(cards){
   if(!cards.includes("Unlucky 7")) return {hand:cards, removed:[]};
 
+  // Unlucky 7 resets only once. Future cards after it should score normally.
+  if(cards.includes(UNLUCKY7_RESOLVED_MARKER)){
+    return {hand:cards, removed:[]};
+  }
+
   const kept = [];
   const removed = [];
 
   cards.forEach(card => {
     if(card === "Unlucky 7"){
+      kept.push(card);
+      return;
+    }
+
+    if(isInternalMarker(card)){
       kept.push(card);
       return;
     }
@@ -359,6 +373,8 @@ function cleanVengeanceHand(cards){
     if(remove) removed.push(card);
     else kept.push(card);
   });
+
+  kept.push(UNLUCKY7_RESOLVED_MARKER);
 
   return {hand:kept, removed};
 }
@@ -378,7 +394,7 @@ function hasActiveZero(p){
 }
 
 function score(cards){
-  let hand = [...cards];
+  let hand = visibleCards(cards);
 
   if(version()==="vengeance"){
     hand = cleanVengeanceHand(hand).hand;
@@ -704,7 +720,7 @@ function endRound(){
   players.forEach(p => {
     if(!p.busted) p.score += score(p.hand);
 
-    discard.push(...p.hand, ...p.bustedHand);
+    discard.push(...visibleCards(p.hand), ...visibleCards(p.bustedHand));
 
     p.hand = [];
     p.bustedHand = [];
@@ -959,7 +975,7 @@ function renderPlayers(){
 
     const handHtml = p.busted
       ? p.bustedHand.map(c=>cardImageHtml(c,true)).join("")
-      : p.hand.map(c=>cardImageHtml(c,false)).join("");
+      : visibleCards(p.hand).map(c=>cardImageHtml(c,false)).join("");
 
     d.innerHTML=`
       <div class="player-name-cell">

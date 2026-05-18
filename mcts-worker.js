@@ -5,6 +5,16 @@ console.log("mcts-worker removeOne fix loaded");
 */
 
 let currentJobId = 0;
+const UNLUCKY7_RESOLVED_MARKER = "__UNLUCKY7_RESOLVED__";
+
+function isInternalMarker(card){
+  return card === UNLUCKY7_RESOLVED_MARKER;
+}
+
+function visibleCards(cards){
+  return (cards || []).filter(card => !isInternalMarker(card));
+}
+
 
 function removeOne(hand, card){
   if(!Array.isArray(hand)) return false;
@@ -450,11 +460,11 @@ function chooseHighestHand(list){
 function getDeck(sim){
   const counts = sim.version === "classic" ? classicCounts() : vengeanceCounts();
 
-  for(const c of sim.discard || []) dec(counts, c);
+  for(const c of visibleCards(sim.discard || [])) dec(counts, c);
 
   for(const p of sim.players){
-    for(const c of p.hand || []) dec(counts, c);
-    for(const c of p.bustedHand || []) dec(counts, c);
+    for(const c of visibleCards(p.hand || [])) dec(counts, c);
+    for(const c of visibleCards(p.bustedHand || [])) dec(counts, c);
   }
 
   return counts;
@@ -491,6 +501,7 @@ function vengeanceCounts(){
 }
 
 function isNumericCard(version, card){
+  if(isInternalMarker(card)) return false;
   if(version === "vengeance"){
     return /^\d+$/.test(card) || ["Zero","Unlucky 7","Lucky 13"].includes(card);
   }
@@ -498,6 +509,7 @@ function isNumericCard(version, card){
 }
 
 function isAction(version, card){
+  if(isInternalMarker(card)) return false;
   if(version === "classic") return ["Freeze","Flip Three"].includes(card);
   return ["Just One More","Flip Four","Swap","Steal","Discard"].includes(card);
 }
@@ -511,6 +523,7 @@ function hasTargetCards(version, hand){
 }
 
 function id(version, card){
+  if(isInternalMarker(card)) return "";
   if(card === "Zero") return "0";
   if(card === "Unlucky 7") return "7";
   if(card === "Lucky 13") return "13L";
@@ -518,6 +531,7 @@ function id(version, card){
 }
 
 function value(version, card){
+  if(isInternalMarker(card)) return 0;
   if(card === "Zero") return 0;
   if(card === "Unlucky 7") return 7;
   if(card === "Lucky 13") return 13;
@@ -563,17 +577,24 @@ function hasDuplicateNumber(version, hand){
 function cleanUnlucky(hand){
   if(!hand.includes("Unlucky 7")) return hand;
 
-  return hand.filter(card => {
+  // One-time reset only. Future cards after Unlucky 7 should count normally.
+  if(hand.includes(UNLUCKY7_RESOLVED_MARKER)) return hand;
+
+  const cleaned = hand.filter(card => {
     if(card === "Unlucky 7") return true;
+    if(isInternalMarker(card)) return true;
     if(card === "Zero" || card === "Lucky 13") return false;
     if(/^\d+$/.test(card)) return false;
     if(["-2","-4","-6","-8","-10","÷2"].includes(card)) return false;
     return true;
   });
+
+  cleaned.push(UNLUCKY7_RESOLVED_MARKER);
+  return cleaned;
 }
 
 function scoreHand(version, cards){
-  let hand = [...cards];
+  let hand = visibleCards(cards);
 
   if(version === "vengeance"){
     hand = cleanUnlucky(hand);
