@@ -174,7 +174,19 @@ function score(cards){
 // ─── Bust ─────────────────────────────────────────────────────────────────────
 function wouldBust(hand,card){
   if(!isNumber(card)) return false;
-  if(version()==="vengeance"){ if(card==="Lucky 13") return false; if(card==="13"){if(hand.some(c=>c==="13")) return true; if(hand.some(c=>c==="Lucky 13")) return false;} }
+  if(version()==="vengeance"){
+    // Lucky 13 never busts (it's a wild 13)
+    if(card==="Lucky 13") return false;
+    // Unlucky 7 never busts on draw: its reset effect clears all duplicate number
+    // cards (including any existing 7) BEFORE the bust check would apply.
+    if(card==="Unlucky 7") return false;
+    // Regular 13 specifics: duplicate with another regular 13 busts; Lucky 13
+    // doesn't block because it can be either value.
+    if(card==="13"){
+      if(hand.some(c=>c==="13")) return true;
+      if(hand.some(c=>c==="Lucky 13")) return false;
+    }
+  }
   return hand.filter(isNumber).map(cardId).includes(cardId(card));
 }
 
@@ -454,16 +466,14 @@ function stealScoreDelta(ownerHand, card){
   return after - before;
 }
 
-// Score delta if we discard `card` from targetHand
+// Score delta if we discard `card` from targetHand (how much we reduce their score)
 function discardScoreDelta(targetHand, card){
   if(isNegativeCard(card)) return -9999; // discarding negatives helps them — skip
-  const before = score(targetHand);
-  const after  = score(targetHand.filter((_,i)=>targetHand.indexOf(card)!==i||true).filter((c,i,arr)=>{ const fi=arr.indexOf(card); return i!==fi||fi===-1; }));
-  // Simpler: score without the first occurrence of card
   const idx = targetHand.indexOf(card);
-  if(idx<0) return 0;
-  const newHand = [...targetHand]; newHand.splice(idx,1);
-  return before - score(newHand); // how much we reduce their score
+  if(idx < 0) return 0;
+  const newHand = [...targetHand];
+  newHand.splice(idx, 1);
+  return score(targetHand) - score(newHand);
 }
 
 // All valid swap pairs: my card X ↔ their card Y
@@ -770,16 +780,30 @@ function update(){
 }
 
 // ─── Persistence ──────────────────────────────────────────────────────────────
-function saveState(){ try{localStorage.setItem("flip7_state",JSON.stringify({players,active,dealer,discard,round,logLines,gameStarted,gameOver,targetScore,version:version()}));}catch(e){} }
+function saveState(){
+  try{
+    localStorage.setItem("flip7_state", JSON.stringify({
+      players, active, dealer, discard, round, logLines,
+      gameStarted, gameOver, targetScore,
+      version: version(),
+      // Persist pending action state so a refresh doesn't lose an in-flight action
+      pending, pendingActionQueue
+    }));
+  }catch(e){}
+}
 function loadState(){
   try{
-    const raw=localStorage.getItem("flip7_state"); if(!raw) return false;
-    const s=JSON.parse(raw); if(!s||!s.players||!s.players.length) return false;
-    players=s.players;active=s.active||0;dealer=s.dealer||0;discard=s.discard||[];round=s.round||1;logLines=s.logLines||[];
-    gameStarted=s.gameStarted||false;gameOver=s.gameOver||false;targetScore=s.targetScore||200;
-    if(s.version){const v=document.getElementById("gameVersion");if(v) v.value=s.version;}
+    const raw = localStorage.getItem("flip7_state"); if(!raw) return false;
+    const s = JSON.parse(raw); if(!s || !s.players || !s.players.length) return false;
+    players = s.players; active = s.active||0; dealer = s.dealer||0;
+    discard = s.discard||[]; round = s.round||1; logLines = s.logLines||[];
+    gameStarted = s.gameStarted||false; gameOver = s.gameOver||false; targetScore = s.targetScore||200;
+    // Restore pending actions
+    pending = s.pending || null;
+    pendingActionQueue = s.pendingActionQueue || [];
+    if(s.version){ const v = document.getElementById("gameVersion"); if(v) v.value = s.version; }
     return true;
-  }catch(e){return false;}
+  }catch(e){ return false; }
 }
 
 // ─── Action targeting ─────────────────────────────────────────────────────────
@@ -978,8 +1002,14 @@ document.addEventListener("DOMContentLoaded",()=>{
   document.getElementById("turnDetails").innerHTML="Choose setup options above, then press Start Game.";
   document.getElementById("simulatorPanel").classList.add("hidden");
 
-  if(loadState()&&gameStarted&&players.length){
+  if(loadState() && gameStarted && players.length){
     hideSetup();
     update();
+    // If a pending action was in flight when the page was closed, reopen its modal
+    if(pending && pending.card){
+      openAction(pending.card, pending.owner);
+    } else if(pendingActionQueue.length){
+      openNextPendingAction();
+    }
   }
 });

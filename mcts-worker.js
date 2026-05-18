@@ -380,6 +380,8 @@ function wouldBust(version,hand,card){
   if(!isNumericCard(version,card)) return false;
   if(version==="vengeance"){
     if(card==="Lucky 13") return false;
+    // Unlucky 7 never busts on draw — its reset effect clears duplicates first.
+    if(card==="Unlucky 7") return false;
     if(card==="13"){
       if(hand.some(c=>c==="13")) return true;
       if(hand.some(c=>c==="Lucky 13")) return false;

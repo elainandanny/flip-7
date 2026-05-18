@@ -54,6 +54,7 @@ function wouldBust(ver,hand,card){
   if(!isNumeric(ver,card)) return false;
   if(ver==="vengeance"){
     if(card==="Lucky 13") return false;
+    if(card==="Unlucky 7") return false; // Unlucky 7's reset clears duplicates
     if(card==="13"){ if(hand.some(c=>c==="13")) return true; if(hand.some(c=>c==="Lucky 13")) return false; }
   }
   const id=cId(ver,card);
