@@ -825,3 +825,18 @@
   border-top: 1px solid var(--border);
   margin: 12px 0;
 }
+
+/* True MCTS mode hides old EV stat grid */
+body.true-mcts-mode .advice-grid { display: none !important; }
+body.true-mcts-mode .mcts-note { display: none !important; }
+body.true-mcts-mode #mctsWorkerStatus { display: block !important; }
+body.true-mcts-mode #mctsWorkerStatus:empty::before {
+  content: "True MCTS thinking...";
+  display: block;
+  background: #171225;
+  border: 1px solid #6d5dfc;
+  border-radius: 10px;
+  padding: 8px;
+  font-size: 13px;
+  color: #e8ddff;
+}

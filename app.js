@@ -28,6 +28,7 @@ let pending = null;
 let swapTemp = null;
 let pendingRoundEnd = null;
 let pendingCardChoice = null;
+let pendingActionQueue = [];
 
 function cfg(){ return CONFIGS[document.getElementById("gameVersion").value]; }
 function version(){ return document.getElementById("gameVersion").value; }
@@ -91,6 +92,7 @@ function startGame(){
   discard = [];
   round = 1;
   pending = null;
+  pendingActionQueue = [];
   swapTemp = null;
   logLines = [];
   gameStarted = true;
@@ -215,6 +217,10 @@ function autoDiscardUnplayableAction(card, owner, reason){
   closeActionModal();
   log(`${card} discarded: ${reason}`);
   alert(`${card} discarded: ${reason}`);
+  if(openNextPendingAction()){
+    return;
+  }
+
   nextTurn();
   update();
 }
@@ -259,7 +265,7 @@ function canResolvePendingAction(){
 }
 
 function hasPendingAction(){
-  return !!(pending && pending.card);
+  return !!(pending && pending.card) || pendingActionQueue.length > 0;
 }
 
 
@@ -280,14 +286,43 @@ function isPlayableCardTarget(card){
   return !isAction(card);
 }
 
+
+function enqueuePendingAction(action){
+  if(!action || !action.card) return;
+  pendingActionQueue.push(action);
+}
+
+function openNextPendingAction(){
+  if(pending && pending.card) return true;
+
+  if(pendingActionQueue.length){
+    pending = pendingActionQueue.shift();
+    openAction(pending.card, pending.owner);
+    update();
+    return true;
+  }
+
+  return false;
+}
+
+function clearPendingActions(){
+  pending = null;
+  pendingActionQueue = [];
+}
+
 function updatePendingActionButton(){
   const btn = document.getElementById("pendingActionButton");
   if(!btn) return;
 
   if(pending && pending.card){
+    const extra = pendingActionQueue.length ? ` +${pendingActionQueue.length}` : "";
     btn.style.display = "block";
     btn.disabled = false;
-    btn.innerText = `Resolve ${pending.card}`;
+    btn.innerText = `Resolve ${pending.card}${extra}`;
+  } else if(pendingActionQueue.length){
+    btn.style.display = "block";
+    btn.disabled = false;
+    btn.innerText = `Resolve next action (${pendingActionQueue.length})`;
   } else {
     btn.style.display = "none";
   }
@@ -296,7 +331,10 @@ function updatePendingActionButton(){
 function reopenPendingAction(){
   if(pending && pending.card){
     openAction(pending.card, pending.owner);
+    return;
   }
+
+  openNextPendingAction();
 }
 
 
@@ -307,13 +345,18 @@ function cleanVengeanceHand(cards){
   const removed = [];
 
   cards.forEach(card => {
+    if(card === "Unlucky 7"){
+      kept.push(card);
+      return;
+    }
+
     const remove =
-      card==="Zero" ||
-      card==="Lucky 13" ||
+      card === "Zero" ||
+      card === "Lucky 13" ||
+      (/^\d+$/.test(card)) ||
       isModifier(card);
 
-    if(card==="Unlucky 7") kept.push(card);
-    else if(remove) removed.push(card);
+    if(remove) removed.push(card);
     else kept.push(card);
   });
 
@@ -641,6 +684,7 @@ function startNewGameFromGameOver(){
   gameOver = false;
   gameStarted = false;
   pending = null;
+  pendingActionQueue = [];
   pendingRoundEnd = null;
   players = [];
   active = 0;
@@ -1548,7 +1592,15 @@ function renderTrueMctsResult(){
   `;
 }
 
+
+function updateTrueMctsClass(){
+  let enabled = false;
+  try { enabled = isTrueMctsEnabled && isTrueMctsEnabled(); } catch(e) {}
+  document.body.classList.toggle("true-mcts-mode", !!enabled);
+}
+
 function renderAdvice(){
+  updateTrueMctsClass();
   try {
   const p=players[active];
 
@@ -1759,7 +1811,6 @@ function justOneMore(target){
   const sourceOwner = pending ? pending.owner : active;
   const sourceCard = pending ? pending.card : "Just One More";
 
-  // Clear pending FIRST so the app does not reopen this same action.
   pending = null;
 
   if(mode()==="digital"){
@@ -1770,12 +1821,7 @@ function justOneMore(target){
       receiveCard(target, c, {advance:false, suppressAction:true});
 
       if(isAction(c) && !players[target].busted && !hasFlip7(players[target])){
-        // The forced player now has their own action to resolve after Just One More is discarded.
-        discardActionCard(sourceOwner, sourceCard);
-        pending = {card:c, owner:target, after:false};
-        openAction(c, target);
-        update();
-        return;
+        enqueuePendingAction({card:c, owner:target, after:false});
       }
     }
 
@@ -1786,6 +1832,10 @@ function justOneMore(target){
       log(`${players[target].name} is forced to stay after Just One More.`);
     }
 
+    if(openNextPendingAction()){
+      return;
+    }
+
     nextTurn();
     update();
     return;
@@ -1793,6 +1843,11 @@ function justOneMore(target){
 
   alert("Tracker mode: enter the forced card for that player manually, then mark them stayed.");
   discardActionCard(sourceOwner, sourceCard);
+
+  if(openNextPendingAction()){
+    return;
+  }
+
   nextTurn();
   update();
 }
@@ -1807,9 +1862,7 @@ function multiDraw(target, n){
 
   const sourceOwner = pending ? pending.owner : active;
   const sourceCard = pending ? pending.card : null;
-  const queuedActions = [];
 
-  // Clear pending before drawing so repeated update/render cycles do not reopen the source action.
   pending = null;
 
   if(mode()==="digital"){
@@ -1820,10 +1873,11 @@ function multiDraw(target, n){
       if(!c) break;
 
       log(`${players[target].name} forced draw ${i+1}/${n}: ${c}.`);
+
       receiveCard(target, c, {advance:false, suppressAction:true});
 
       if(isAction(c) && !players[target].busted && !hasFlip7(players[target])){
-        queuedActions.push({card:c, owner:target, after:false});
+        enqueuePendingAction({card:c, owner:target, after:false});
       }
 
       if(players[target].busted || hasFlip7(players[target])) break;
@@ -1839,10 +1893,7 @@ function multiDraw(target, n){
       return;
     }
 
-    if(queuedActions.length){
-      pending = queuedActions[0];
-      openAction(pending.card, pending.owner);
-      update();
+    if(openNextPendingAction()){
       return;
     }
 
@@ -1855,6 +1906,11 @@ function multiDraw(target, n){
   if(sourceCard){
     discardActionCard(sourceOwner, sourceCard);
   }
+
+  if(openNextPendingAction()){
+    return;
+  }
+
   nextTurn();
   update();
 }

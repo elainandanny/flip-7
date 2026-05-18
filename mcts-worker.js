@@ -566,6 +566,7 @@ function cleanUnlucky(hand){
   return hand.filter(card => {
     if(card === "Unlucky 7") return true;
     if(card === "Zero" || card === "Lucky 13") return false;
+    if(/^\d+$/.test(card)) return false;
     if(["-2","-4","-6","-8","-10","÷2"].includes(card)) return false;
     return true;
   });
