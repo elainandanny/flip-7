@@ -772,31 +772,43 @@ function renderPlayers(){
   });
 }
 
-function renderCardGrid(elId,clickable){
-  const el=document.getElementById(elId); if(!el) return;
-  el.innerHTML=""; const deck=getDeck();
-  cfg().cards.forEach(card=>{
-    const rem=deck[card]||0,max=cfg().counts[card]||0;
-    const b=document.createElement("button");
-    b.className=`card-btn ${rem===0?"card-none":"card-available"}`; b.disabled=rem<=0;
-    b.innerHTML=`<img class="card-art" src="${cardImagePath(card)}" alt="${card}" loading="lazy"><span class="card-count">${rem}/${max}</span>`;
+function renderCardGrid(elId, clickable){
+  const el = document.getElementById(elId); if(!el) return;
+  el.innerHTML = "";
+  // Use the effective deck — when the draw pile is empty, this returns the
+  // reshuffled pool (discard would be shuffled back in per the rules).
+  const {deck, reshuffled} = clickable ? getEffectiveDeck() : {deck:getDeck(), reshuffled:false};
+
+  cfg().cards.forEach(card => {
+    const rem = deck[card] || 0;
+    const max = cfg().counts[card] || 0;
+    const b = document.createElement("button");
+    b.className = `card-btn ${rem===0?"card-none":"card-available"}`;
+    b.disabled = rem <= 0;
+    b.innerHTML = `<img class="card-art" src="${cardImagePath(card)}" alt="${card}" loading="lazy"><span class="card-count">${rem}/${max}</span>`;
     if(clickable){
-      b.onclick=()=>{
+      b.onclick = () => {
         invalidateDeckCache();
+        // If the draw pile was empty and we're effectively reshuffling, do the
+        // actual reshuffle (clear discard) BEFORE recording the card.
+        if(reshuffled){
+          discard = [];
+          invalidateDeckCache();
+          log("Deck empty — discard pile reshuffled back in.", true);
+        }
         // If a forced-draw sequence is active (tracker mode), route the card
         // to the forced target instead of the active player.
         if(forcedDraw && forcedDraw.remaining > 0){
           applyForcedDraw(card);
           return;
         }
-        // Turns alternate one card at a time per the rules: each player takes
-        // exactly ONE card on their turn, then the next player goes. So both
-        // tracker and digital modes advance after the active player's card.
+        // Turns alternate one card at a time per the rules.
         receiveCard(active, card, {advance: true});
       };
-      b.ondblclick=e=>{e.preventDefault();openCardZoom(card);};
+      b.ondblclick = e => {e.preventDefault(); openCardZoom(card);};
+    } else {
+      b.onclick = () => openCardZoom(card);
     }
-    else{b.onclick=()=>openCardZoom(card);}
     el.appendChild(b);
   });
 }
@@ -865,7 +877,19 @@ function openAction(card,owner){
   title.innerText=`${players[owner].name}'s Action: ${card}`;
   body.innerHTML=actionOwnerHandPreview(owner);
   if(actionNeedsTarget(card)&&validActionTargets(card,owner).length===0){autoDiscardUnplayableAction(card,owner,`no valid target for ${card}`);return;}
-  if(card==="Freeze"){players[owner].stayed=true;log(`${players[owner].name} frozen.`);discardActionCard(owner,card);pending=null;closeActionModal();if(mode()==="digital") nextTurn();update();return;}
+  if(card==="Freeze"){
+    // Per rules, Freeze targets a player and forces them to stay immediately.
+    // Currently the code always freezes the action owner — see note below.
+    players[owner].stayed = true;
+    log(`${players[owner].name} frozen (forced to stay).`);
+    discardActionCard(owner, card);
+    pending = null;
+    closeActionModal();
+    // Always advance turn — frozen player can't take any more actions, regardless of mode
+    nextTurn();
+    update();
+    return;
+  }
 
   const targets=validActionTargets(card,owner);
   // Advice placeholder — filled async
