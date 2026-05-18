@@ -27,6 +27,11 @@ const CONFIGS = {
 let players=[], active=0, dealer=0, discard=[], round=1, logLines=[];
 let gameStarted=false, gameOver=false, targetScore=200;
 let pending=null, swapTemp=null, pendingRoundEnd=null, pendingActionQueue=[];
+// Tracker-mode state: when a Flip Four / Just One More routes cards to a target,
+// subsequent manual entries go here until remaining=0 or the target busts/Flip-7s.
+// {target: idx, remaining: n, source: ownerIdx, sourceCard: "Flip Four"|"Just One More",
+//  buffered: [actionCards drawn during sequence], stayAfter: bool (Just One More)}
+let forcedDraw = null;
 
 // ─── Accessors ────────────────────────────────────────────────────────────────
 function cfg(){ return CONFIGS[document.getElementById("gameVersion").value]; }
@@ -135,7 +140,7 @@ function openNextPendingAction(){
   if(pendingActionQueue.length){ pending=pendingActionQueue.shift(); openAction(pending.card,pending.owner); update(); return true; }
   return false;
 }
-function clearPendingActions(){ pending=null; pendingActionQueue=[]; }
+function clearPendingActions(){ pending=null; pendingActionQueue=[]; forcedDraw=null; }
 function reopenPendingAction(){ if(pending&&pending.card){openAction(pending.card,pending.owner);return;} openNextPendingAction(); }
 function updatePendingActionButton(){
   const btn=document.getElementById("pendingActionButton"); if(!btn) return;
@@ -247,7 +252,7 @@ function startGame(){
   let names=document.getElementById("playerNames").value.split("\n").map(x=>x.trim()).filter(Boolean);
   while(names.length<n) names.push(`Player ${names.length+1}`); names=names.slice(0,n);
   players=names.map(name=>({name,hand:[],bustedHand:[],stayed:false,busted:false,score:0}));
-  dealer=0; active=dealer; discard=[]; round=1; pending=null; pendingActionQueue=[]; swapTemp=null;
+  dealer=0; active=dealer; discard=[]; round=1; pending=null; pendingActionQueue=[]; swapTemp=null; forcedDraw=null;
   logLines=[]; gameStarted=true; gameOver=false;
   targetScore=Number(document.getElementById("targetScoreInput")?.value||200);
   invalidateDeckCache(); hideSetup();
@@ -351,7 +356,7 @@ function checkGameOver(){
 function closeGameOverModal(){ document.getElementById("gameOverModal").style.display="none"; }
 function startNewGameFromGameOver(){
   const m=document.getElementById("gameOverModal"); if(m) m.style.display="none";
-  gameOver=false; gameStarted=false; pending=null; pendingActionQueue=[]; pendingRoundEnd=null;
+  gameOver=false; gameStarted=false; pending=null; pendingActionQueue=[]; pendingRoundEnd=null; forcedDraw=null;
   players=[]; active=0; dealer=0; discard=[]; round=1; logLines=[]; invalidateDeckCache(); showSetup(); update();
 }
 
@@ -720,7 +725,7 @@ function renderAdvice(){
     const p=players[active]; if(!p){document.getElementById("turnTitle").innerText="Start a game";return;}
     document.getElementById("turnTitle").innerText=`Round ${round}: ${p.name}'s turn`;
     document.getElementById("topStatus").innerText=`R${round} · ${p.name}`;
-    document.getElementById("turnDetails").innerHTML=`Version: <b>${cfg().name}</b> · Mode: <b>${mode()==="digital"?"Play":"Tracker"}</b><br>Dealer: <b>${players[dealer]?.name||""}</b> · Deck left: <b>${remainingTotal()}</b>${pending?.card?`<br><span class="pending-action-warning">Resolve ${pending.card} first.</span>`:""}`;
+    document.getElementById("turnDetails").innerHTML=`Version: <b>${cfg().name}</b> · Mode: <b>${mode()==="digital"?"Play":"Tracker"}</b><br>Dealer: <b>${players[dealer]?.name||""}</b> · Deck left: <b>${remainingTotal()}</b>${pending?.card?`<br><span class="pending-action-warning">Resolve ${pending.card} first.</span>`:""}${forcedDraw?`<br><span class="forced-draw-banner">⚡ ${forcedDraw.sourceCard}: enter <b>${forcedDraw.remaining}</b> more card(s) for <b>${players[forcedDraw.target].name}</b> · <button class="forced-draw-cancel" onclick="cancelForcedDraw()">Cancel</button></span>`:""}`;
     const adviceBox=document.getElementById("adviceBox"), odds=document.getElementById("oddsBox");
     if(!showAdvice()){updateCornerRecommendation(null);adviceBox.innerHTML='<div class="display">Odds hidden.</div>';odds.innerHTML="";return;}
     const {deck} = getEffectiveDeck(); // reshuffle-aware: empty deck → use discard pool
@@ -774,7 +779,19 @@ function renderCardGrid(elId,clickable){
     const b=document.createElement("button");
     b.className=`card-btn ${rem===0?"card-none":"card-available"}`; b.disabled=rem<=0;
     b.innerHTML=`<img class="card-art" src="${cardImagePath(card)}" alt="${card}" loading="lazy"><span class="card-count">${rem}/${max}</span>`;
-    if(clickable){b.onclick=()=>{invalidateDeckCache();receiveCard(active,card,{advance:true});};b.ondblclick=e=>{e.preventDefault();openCardZoom(card);};}
+    if(clickable){
+      b.onclick=()=>{
+        invalidateDeckCache();
+        // If a forced-draw sequence is active (tracker mode), route the card
+        // to the forced target instead of the active player.
+        if(forcedDraw && forcedDraw.remaining > 0){
+          applyForcedDraw(card);
+          return;
+        }
+        receiveCard(active, card, {advance:true});
+      };
+      b.ondblclick=e=>{e.preventDefault();openCardZoom(card);};
+    }
     else{b.onclick=()=>openCardZoom(card);}
     el.appendChild(b);
   });
@@ -800,7 +817,7 @@ function saveState(){
       gameStarted, gameOver, targetScore,
       version: version(),
       // Persist pending action state so a refresh doesn't lose an in-flight action
-      pending, pendingActionQueue
+      pending, pendingActionQueue, forcedDraw
     }));
   }catch(e){}
 }
@@ -814,6 +831,7 @@ function loadState(){
     // Restore pending actions
     pending = s.pending || null;
     pendingActionQueue = s.pendingActionQueue || [];
+    forcedDraw = s.forcedDraw || null;
     if(s.version){ const v = document.getElementById("gameVersion"); if(v) v.value = s.version; }
     return true;
   }catch(e){ return false; }
@@ -869,6 +887,69 @@ function closeActionModal(){ document.getElementById("actionModal").style.displa
 function discardActionCard(owner,card){ const p=players[owner];const idx=p.hand.indexOf(card);if(idx>=0){p.hand.splice(idx,1);discard.push(card);invalidateDeckCache();} }
 function discardActionAndContinue(){ if(pending) discardActionCard(pending.owner,pending.card);pending=null;closeActionModal();nextTurn(); }
 
+// ─── Forced draw (tracker mode) ──────────────────────────────────────────────
+// Routes manually-entered cards to the action's target, not the active player.
+// Used by Flip Four, Flip Three, and Just One More in tracker mode.
+function applyForcedDraw(card){
+  if(!forcedDraw || forcedDraw.remaining<=0) return;
+  const t = forcedDraw.target;
+  log(`${players[t].name} forced draw (${forcedDraw.sourceCard}): ${card}.`);
+  invalidateDeckCache();
+  // Receive the card on the target. suppressAction prevents action cards from
+  // opening their modal immediately; we'll buffer them and only resolve if the
+  // sequence completes without bust.
+  receiveCard(t, card, {advance:false, suppressAction:true});
+
+  if(isAction(card) && !players[t].busted && !hasFlip7(players[t])){
+    forcedDraw.buffered.push(card);
+  }
+  forcedDraw.remaining--;
+
+  // Check end conditions: bust, Flip 7, or exhausted count
+  const target = players[t];
+  if(target.busted){
+    log(`${target.name} busted during forced draws. Any pending action cards discarded.`);
+    forcedDraw = null;
+    saveState(); nextTurn(); update(); return;
+  }
+  if(hasFlip7(target)){
+    forcedDraw = null;
+    saveState();
+    // showRoundEndPrompt already fired from receiveCard
+    update(); return;
+  }
+  if(forcedDraw.remaining > 0){
+    // Show progress
+    toast(`${forcedDraw.remaining} more forced draw(s) for ${target.name}.`, "info");
+    saveState(); update(); return;
+  }
+
+  // Sequence complete — apply post-sequence rules
+  const stayAfter = forcedDraw.stayAfter;
+  const buffered  = [...forcedDraw.buffered];
+  forcedDraw = null;
+
+  // Just One More forces the target to stay after their one draw
+  if(stayAfter && !target.busted){
+    target.stayed = true;
+    log(`${target.name} forced to stay (Just One More).`);
+  }
+
+  // Enqueue any buffered action cards drawn during the sequence
+  buffered.forEach(c => enqueuePendingAction({card:c, owner:t, after:false}));
+
+  saveState();
+  if(openNextPendingAction()) return;
+  nextTurn(); update();
+}
+
+function cancelForcedDraw(){
+  if(!forcedDraw) return;
+  toast("Forced draw cancelled.", "info");
+  forcedDraw = null;
+  saveState(); update();
+}
+
 // ─── Action resolvers ─────────────────────────────────────────────────────────
 function justOneMore(target){
   if(!canResolvePendingAction()){toast("Only the action owner can resolve.","warn");return;}
@@ -878,7 +959,17 @@ function justOneMore(target){
     discardActionCard(so,sc); if(!players[target].busted){players[target].stayed=true;log(`${players[target].name} forced to stay.`);}
     if(openNextPendingAction()) return; nextTurn();update();return;
   }
-  toast("Tracker: enter the forced card, then mark stayed.","info"); discardActionCard(so,sc);if(openNextPendingAction()) return;nextTurn();update();
+  // ── Tracker mode ──
+  // Set forcedDraw state so the next manual card entry is routed to the target.
+  // The action card itself is discarded from the owner's hand now.
+  if(sc) discardActionCard(so, sc);
+  forcedDraw = {
+    target, remaining:1, source:so, sourceCard:"Just One More",
+    buffered:[], stayAfter:true
+  };
+  toast(`Tracker: enter the one forced card for ${players[target].name}.`, "info");
+  saveState();
+  update();
 }
 function multiDraw(target, n){
   if(!canResolvePendingAction()){toast("Only the action owner can resolve.","warn");return;}
@@ -940,8 +1031,16 @@ function multiDraw(target, n){
 
   toast(`Tracker: enter up to ${n} cards for ${players[target].name}.`, "info");
   if(sc) discardActionCard(so, sc);
-  if(openNextPendingAction()) return;
-  nextTurn(); update();
+  // ── Tracker mode ──
+  // Route the next N manual card entries to the target via forcedDraw state.
+  // Action cards drawn during this sequence are buffered and only resolved if
+  // the target makes it through without busting (per official rules).
+  forcedDraw = {
+    target, remaining:n, source:so, sourceCard:pending?pending.card:"Flip Four",
+    buffered:[], stayAfter:false
+  };
+  saveState();
+  update();
 }
 function chooseCard(kind,target){
   const body=document.getElementById("actionBody");
@@ -1209,7 +1308,8 @@ Object.assign(window,{
   toggleMenu,openCardZoom,closeCardZoom,confirmRoundEnd,justOneMore,multiDraw,
   chooseCard,confirmCardAction,doCardAction,chooseSwapMine,chooseSwapTheirs,
   confirmSwap,doSwap,reopenPendingAction,discardActionAndContinue,openAction,
-  closeActionModal,onModeChange,startSimulation,cancelSimulation
+  closeActionModal,onModeChange,startSimulation,cancelSimulation,
+  cancelForcedDraw
 });
 
 // ─── Init: wait for DOM ───────────────────────────────────────────────────────
