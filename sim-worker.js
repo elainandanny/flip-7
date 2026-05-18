@@ -141,19 +141,30 @@ function decideAdaptive(ver, hand, deck, playerScore, leaderScore){
   // MCTS-style heuristic with opponent awareness — not user-configurable
   if(hand.length===0) return true;
   if(ver==="vengeance"&&hand.includes("Zero")&&uniqueNums(ver,hand)<7) return true;
+  // Always chase Flip 7 when one card away
   if(uniqueNums(ver,hand)>=6) return true;
+
   const total=Object.values(deck).reduce((a,b)=>a+b,0);
   if(total<=0) return false;
   let bustCards=0;
   for(const [c,n] of Object.entries(deck)){ if(n>0&&wouldBust(ver,hand,c)) bustCards+=n; }
   const bust=bustCards/total;
+
+  // Use ROUND score (current hand value), not cumulative game score
+  const roundScore=scoreHand(ver,hand);
   const behind=Math.max(0,leaderScore-playerScore);
+
+  // Base threshold: how much round score to accumulate before staying
   let threshold=22;
+  // Risk more when far behind the leader
   if(behind>40) threshold+=10;
+  else if(behind>20) threshold+=5;
+  // Play tighter when already leading the game
   if(playerScore>=leaderScore) threshold-=4;
-  if(playerScore<threshold&&bust<0.30) return true;
-  if(playerScore<threshold+15&&bust<0.15) return true;
-  if(bust<0.07&&playerScore<50) return true;
+
+  if(roundScore<threshold && bust<0.30) return true;
+  if(roundScore<threshold+15 && bust<0.15) return true;
+  if(bust<0.07 && roundScore<50) return true;
   return false;
 }
 
@@ -300,54 +311,55 @@ self.onmessage = event => {
 
   const wins={aggressive:0, conservative:0, adaptive:0};
   const ties={aggressive:0, conservative:0, adaptive:0};
-  const totalRounds={aggressive:0, conservative:0, adaptive:0};
   const stayScoresByStrategy={aggressive:[], conservative:[], adaptive:[]};
-  const bustRates={aggressive:0, conservative:0, adaptive:0};
-  let totalBusts={aggressive:0, conservative:0, adaptive:0};
-  let totalTurns={aggressive:0, conservative:0, adaptive:0};
 
   const BATCH=100;
   let gamesRun=0;
 
-  // Strategies per player slot — every game has all 3 strategies represented
-  // pad with adaptive to fill playerCount
+  // Give each strategy exactly one seat per game regardless of player count.
+  // Extra seats beyond 3 rotate through all strategies to stay balanced.
+  // This ensures win rates are always per-strategy-seat-opportunity, not skewed
+  // by having e.g. 2 aggressive seats vs 1 adaptive seat.
   function buildStrategies(n){
+    // Shuffle strategy assignment each game so seat order doesn't bias results.
     const base=["aggressive","conservative","adaptive"];
     const arr=[];
     for(let i=0;i<n;i++) arr.push(base[i%base.length]);
     return arr;
   }
 
+  // Count how many seats each strategy occupies per game (for fair normalization)
   const strategies=buildStrategies(playerCount);
+  const seatsPerStrategy={aggressive:0,conservative:0,adaptive:0};
+  strategies.forEach(s=>{ seatsPerStrategy[s]++; });
+  // Win rate denominator: each seat is one independent chance to win
+  // We divide wins by (games × seatsPerStrategy) to get per-seat win rate
+  let totalSeats={aggressive:0,conservative:0,adaptive:0};
 
   function runBatch(n){
     for(let g=0;g<n&&gamesRun<totalGames;g++, gamesRun++){
       const result=playGame(version, playerCount, targetScore, strategies, stratConfig);
 
-      // A strategy "wins" if at least one winner used that strategy
-      const winSet=new Set(result.winners);
-      strategyNames.forEach(s=>{
-        if(winSet.has(s)){
-          if(result.winners.length===1) wins[s]++;
-          else ties[s]++;
-        }
+      strategyNames.forEach(s=>{ totalSeats[s]+=seatsPerStrategy[s]; });
+
+      // Count wins: each winning seat counts as one win for that strategy
+      result.winners.forEach(winnerStrategy=>{
+        if(result.winners.length===1) wins[winnerStrategy]++;
+        else ties[winnerStrategy]++;
       });
 
       result.stayScores.forEach(({strategy,score})=>{
         stayScoresByStrategy[strategy].push(score);
       });
-
-      totalRounds[strategies[0]]+=result.roundsPlayed;
     }
   }
 
   function sendProgress(){
     const pct=Math.round((gamesRun/totalGames)*100);
-    // Compute live win rates
     const liveRates={};
     strategyNames.forEach(s=>{
-      const total=wins[s]+ties[s];
-      liveRates[s]=gamesRun>0?(total/gamesRun*100):0;
+      const seats=totalSeats[s]||1;
+      liveRates[s]=(wins[s]+ties[s])/seats*100;
     });
     self.postMessage({type:"progress", jobId, gamesRun, totalGames, pct, liveRates});
   }
@@ -363,14 +375,15 @@ self.onmessage = event => {
   // ─── Compute final statistics ─────────────────────────────────────────────
   const finalRates={};
   strategyNames.forEach(s=>{
+    const seats=totalSeats[s]||1;
     finalRates[s]={
-      winRate: gamesRun>0?((wins[s]+ties[s])/gamesRun*100):0,
-      outright: gamesRun>0?(wins[s]/gamesRun*100):0,
+      winRate: (wins[s]+ties[s])/seats*100,
+      outright: wins[s]/seats*100,
       avgStayScore: stayScoresByStrategy[s].length
         ? stayScoresByStrategy[s].reduce((a,b)=>a+b,0)/stayScoresByStrategy[s].length
         : 0,
       stayScoreHistogram: buildHistogram(stayScoresByStrategy[s], 0, 80, 10),
-      stayScores: stayScoresByStrategy[s]  // for percentile calcs
+      stayScores: stayScoresByStrategy[s]
     };
   });
 
