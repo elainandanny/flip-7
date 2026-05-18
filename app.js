@@ -75,6 +75,19 @@ function log(msg,good=false){ logLines.unshift(`<p class="${good?"log-good":""}"
 
 // ─── View management ──────────────────────────────────────────────────────────
 function showSetup(){
+  // Exit simulator mode if active: unhide game panels and hide sim panel
+  const simPanel = document.getElementById("simulatorPanel");
+  const leftPanel = document.getElementById("leftPanel");
+  const rightPanel = document.getElementById("rightPanel");
+  if(simPanel) simPanel.classList.add("hidden");
+  if(leftPanel) leftPanel.classList.remove("hidden");
+  if(rightPanel) rightPanel.classList.remove("hidden");
+
+  // If the mode dropdown is still set to "simulator", flip it back to "digital"
+  // so Start Game will actually render the board
+  const playMode = document.getElementById("playMode");
+  if(playMode && playMode.value === "simulator") playMode.value = "digital";
+
   document.getElementById("setupCard").classList.remove("hidden");
   document.getElementById("gameMenu").classList.add("hidden");
   // Hide the entire game board when showing setup
