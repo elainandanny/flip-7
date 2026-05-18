@@ -130,7 +130,7 @@ function rolloutFromRoot(state, rootIndex, rootMove){
   if(rootMove==="STAY"){
     root.stayed = true;
   } else {
-    const card = draw(deck);
+    const card = draw(deck, sim);
     if(card){
       const outcome = applyCard(sim, deck, rootIndex, card);
       if(outcome==="bust") rootBust = true;
@@ -153,7 +153,7 @@ function rolloutFromRoot(state, rootIndex, rootMove){
       if(move==="STAY"){
         p.stayed = true;
       } else {
-        const card = draw(deck);
+        const card = draw(deck, sim);
         if(!card){ p.stayed=true; }
         else {
           const outcome = applyCard(sim,deck,idx,card);
@@ -232,7 +232,7 @@ function resolveActionApprox(sim, deck, owner, card){
   if(card==="Just One More"){
     const target = chooseHighestHand(sim.version, alive);
     if(target){
-      const c=draw(deck);
+      const c=draw(deck, sim);
       if(c) applyCard(sim,deck,target.i,c);
       if(!target.p.busted) target.p.stayed=true;
     }
@@ -245,7 +245,7 @@ function resolveActionApprox(sim, deck, owner, card){
     if(target){
       for(let i=0;i<max;i++){
         if(target.p.busted||uniqueCount(sim.version,target.p.hand)>=7) break;
-        const c=draw(deck); if(!c) break;
+        const c=draw(deck, sim); if(!c) break;
         const outcome=applyCard(sim,deck,target.i,c);
         if(outcome==="bust"||outcome==="flip7") break;
       }
@@ -307,8 +307,24 @@ function getDeck(sim){
 }
 function dec(deck,card){ if(deck[card]>0) deck[card]--; }
 
-function draw(deck){
-  const total=Object.values(deck).reduce((a,b)=>a+b,0);
+function draw(deck, sim){
+  let total=Object.values(deck).reduce((a,b)=>a+b,0);
+
+  // Per rules: when draw pile exhausted mid-round, shuffle discard back in.
+  // In simulation we model this by adding discard cards back to the deck.
+  if(total<=0 && sim && sim.discard && sim.discard.length>0){
+    const reshuffled = sim.version==="classic" ? classicCounts() : vengeanceCounts();
+    // Remove cards in players' hands — they can't be in the reshuffle
+    for(const p of sim.players){
+      for(const c of visibleCards(p.hand||[])) dec(reshuffled,c);
+      for(const c of visibleCards(p.bustedHand||[])) dec(reshuffled,c);
+    }
+    // Replace deck contents with reshuffled pool
+    Object.keys(deck).forEach(k=>{ deck[k]=reshuffled[k]||0; });
+    sim.discard=[];
+    total=Object.values(deck).reduce((a,b)=>a+b,0);
+  }
+
   if(total<=0) return null;
   let r=Math.floor(Math.random()*total);
   for(const [card,count] of Object.entries(deck)){
@@ -398,8 +414,13 @@ function cleanUnlucky(hand){
 // Bug fix #4 & #6: Official Vengeance modifier order: subtract FIRST, then ÷2.
 // Flip 7 bonus is 15 for both versions (matches official rules).
 function scoreHand(version, cards){
-  let hand = visibleCards(cards);
-  if(version==="vengeance") hand=cleanUnlucky(hand);
+  // Do NOT strip the UNLUCKY7_RESOLVED_MARKER before cleanUnlucky().
+  // The marker tells cleanUnlucky the reset already fired — without it,
+  // every scoreHand call would re-strip post-Unlucky-7 cards.
+  let hand = version==="vengeance"
+    ? cleanUnlucky(cards || [])
+    : visibleCards(cards);
+  hand = visibleCards(hand); // strip marker now that cleanUnlucky has seen it
 
   const nums   = hand.filter(c=>isNumericCard(version,c));
   const unique = uniqueCount(version,hand);

@@ -179,11 +179,38 @@ function wouldBust(hand,card){
 }
 
 // ─── Deck operations ──────────────────────────────────────────────────────────
-function remainingTotal(){ return Object.values(getDeck()).reduce((a,b)=>a+b,0); }
+function remainingTotal(){
+  const {deck,reshuffled} = getEffectiveDeck();
+  const n = Object.values(deck).reduce((a,b)=>a+b,0);
+  return reshuffled ? n : n; // same value; reshuffled flag used elsewhere for logging
+}
+// Returns the effective drawable deck.
+// Per rules: if the draw pile is empty mid-round, shuffle the discard pile back in.
+// We model this by adding discard cards back to the available pool when deck is empty.
+function getEffectiveDeck(){
+  const deck = getDeck();
+  const total = Object.values(deck).reduce((a,b)=>a+b,0);
+  if(total > 0) return {deck, reshuffled:false};
+  // Deck is empty — simulate the discard being reshuffled back in.
+  // The effective available pool is everything in the discard pile.
+  const reshuffled = {...cfg().counts};
+  // Remove cards still in players' hands (those can't be in the reshuffle)
+  players.forEach(p=>{
+    [...p.hand,...p.bustedHand].forEach(c=>{ if(reshuffled[c]>0) reshuffled[c]--; });
+  });
+  return {deck:reshuffled, reshuffled:true};
+}
+
 function drawRandomCard(){
-  const deck=getDeck();
-  let total=Object.values(deck).reduce((a,b)=>a+b,0);
+  const {deck, reshuffled} = getEffectiveDeck();
+  const total = Object.values(deck).reduce((a,b)=>a+b,0);
   if(total<=0) return null;
+  if(reshuffled){
+    // Actually perform the reshuffle in game state
+    discard=[];
+    invalidateDeckCache();
+    log("Deck empty — discard pile reshuffled back in.",true);
+  }
   let r=Math.floor(Math.random()*total);
   for(const [card,count] of Object.entries(deck)){if(r<count) return card; r-=count;}
   return null;
@@ -333,10 +360,16 @@ function flip7FutureChance(hand,deckState,hasSecondChance){
 }
 
 function evalPlayer(p,deck){
-  deck=deck||getDeck(); const total=Object.values(deck).reduce((a,b)=>a+b,0);
+  // Use effective deck: if draw pile is empty, the discard will be reshuffled in.
+  // We should evaluate against the full available card pool, not return STAY.
+  if(!deck){
+    const eff = getEffectiveDeck();
+    deck = eff.deck;
+  }
+  const total=Object.values(deck).reduce((a,b)=>a+b,0);
   const current=score(p.hand); const zeroActive=hasActiveZero(p);
   const f7=flip7FutureChance(p.hand,deck,version()==="classic"&&p.hand.includes("Second Chance"))*100;
-  if(total<=0) return {rec:zeroActive?"HIT":"STAY",current,ev:0,bust:0,flip7:f7,reason:zeroActive?"Zero active.":"No cards remain."};
+  if(total<=0) return {rec:zeroActive?"HIT":"STAY",current,ev:0,bust:0,flip7:f7,reason:zeroActive?"Zero active.":"Deck and discard are both empty — no cards can be drawn."};
   let ev=0,bustCards=0,improve=0,same=0;
   Object.entries(deck).forEach(([card,count])=>{
     if(count<=0) return; const prob=count/total; let outcome=current;
@@ -667,7 +700,8 @@ function renderAdvice(){
     document.getElementById("turnDetails").innerHTML=`Version: <b>${cfg().name}</b> · Mode: <b>${mode()==="digital"?"Play":"Tracker"}</b><br>Dealer: <b>${players[dealer]?.name||""}</b> · Deck left: <b>${remainingTotal()}</b>${pending?.card?`<br><span class="pending-action-warning">Resolve ${pending.card} first.</span>`:""}`;
     const adviceBox=document.getElementById("adviceBox"), odds=document.getElementById("oddsBox");
     if(!showAdvice()){updateCornerRecommendation(null);adviceBox.innerHTML='<div class="display">Odds hidden.</div>';odds.innerHTML="";return;}
-    const deck=getDeck(); const ev=evalPlayer(p,deck); const mcts=mctsDecision(active,deck);
+    const {deck} = getEffectiveDeck(); // reshuffle-aware: empty deck → use discard pool
+    const ev=evalPlayer(p,deck); const mcts=mctsDecision(active,deck);
     updateCornerRecommendation(mcts.rec);
     adviceBox.innerHTML=`<div class="advice-grid">
       <div class="advice-tile recommend ${mcts.rec==="HIT"?"hit":"stay"}">${mcts.rec}</div>
@@ -692,7 +726,7 @@ function renderAdvice(){
 
 function renderPlayers(){
   const el=document.getElementById("playersGrid"); if(!el) return;
-  el.innerHTML=""; const deck=getDeck();
+  el.innerHTML=""; const {deck}=getEffectiveDeck();
   players.forEach((p,i)=>{
     const d=document.createElement("div");
     d.className=`player-row ${i===active?"active":""} ${p.stayed?"stayed":""} ${p.busted?"busted":""}`;
