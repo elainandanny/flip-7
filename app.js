@@ -306,7 +306,8 @@ function receiveCard(playerIndex,card,opts={}){
       log(`${p.name} used Second Chance. ${card} discarded.`); if(opts.advance) nextTurn(); update(); return;
     }
     p.hand.push(card); bustPlayer(playerIndex); log(`${p.name} busted on ${card}.`);
-    if(opts.advance) nextTurn(); update(); return;
+    // Always advance on bust — the busted player can't take any more actions.
+    nextTurn(); update(); return;
   }
   p.hand.push(card);
   if(version()==="vengeance"&&card==="Unlucky 7"){
@@ -788,7 +789,12 @@ function renderCardGrid(elId,clickable){
           applyForcedDraw(card);
           return;
         }
-        receiveCard(active, card, {advance:true});
+        // In tracker mode, manual card entries do NOT auto-advance to the next
+        // player. The user is recording cards for the active player who is still
+        // taking their turn. Only Stay/bust/Flip 7 advances the turn.
+        // In digital mode, the dealer button (Hit) handles the draw + advance.
+        const shouldAdvance = mode() !== "tracker";
+        receiveCard(active, card, {advance: shouldAdvance});
       };
       b.ondblclick=e=>{e.preventDefault();openCardZoom(card);};
     }
