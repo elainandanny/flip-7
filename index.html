@@ -62,6 +62,7 @@
         <option value="digital" selected>Play Game</option>
         <option value="tracker">Tracker</option>
         <option value="simulator">Simulator</option>
+        <option value="bot">Bot Replay</option>
       </select>
 
       <label>Show odds/advice?</label>
@@ -240,6 +241,90 @@ David</textarea>
       <div id="simResultsArea" class="panel hidden"></div>
 
     </div><!-- /simulatorPanel -->
+
+    <!-- Bot Replay panel -->
+    <div id="botPanel" class="hidden">
+
+      <!-- Bot setup -->
+      <div class="panel" id="botSetupPanel">
+        <h2>🤖 Bot Replay</h2>
+        <p class="small">Configure each player's strategy. Bots play out a full game. Then scrub through it step-by-step to see what happened and when MCTS would have advised differently.</p>
+
+        <label>Game version</label>
+        <select id="botVersion">
+          <option value="vengeance" selected>Flip 7: With a Vengeance</option>
+          <option value="classic">Original Flip 7</option>
+        </select>
+
+        <label>Target score</label>
+        <input id="botTargetScore" type="number" min="50" value="200" />
+
+        <label>Number of players</label>
+        <input id="botPlayerCount" type="number" min="2" max="10" value="4" onchange="rebuildBotPlayerConfigs()" />
+
+        <div id="botPlayerConfigs" class="bot-player-configs"></div>
+
+        <div class="row" style="margin-top:14px">
+          <button class="green" id="botStartBtn" onclick="startBotGame()">▶ Run Bot Game</button>
+        </div>
+      </div>
+
+      <!-- Bot playback view -->
+      <div id="botReplayView" class="hidden">
+
+        <!-- Header: round/turn + winner banner -->
+        <div class="panel bot-header-panel">
+          <div class="bot-header-row">
+            <div class="bot-header-info">
+              <div id="botRoundLabel" class="bot-round-label">Round 1</div>
+              <div id="botTurnLabel" class="bot-turn-label">Loading…</div>
+            </div>
+            <button class="bot-back-btn" onclick="exitBotReplay()">← New Setup</button>
+          </div>
+          <div id="botWinnerBanner" class="bot-winner-banner hidden"></div>
+        </div>
+
+        <!-- Player dashboard -->
+        <div class="panel">
+          <div id="botPlayersGrid" class="players compact-dashboard"></div>
+        </div>
+
+        <!-- MCTS disagreement annotation -->
+        <div id="botAnnotation" class="panel bot-annotation hidden">
+          <div class="bot-annotation-title">🤖 vs 🎯 MCTS</div>
+          <div id="botAnnotationBody"></div>
+        </div>
+
+        <!-- Playback controls -->
+        <div class="panel bot-controls-panel">
+          <div class="bot-controls-row">
+            <button class="bot-ctrl" onclick="botRewind()" title="Restart">⏮</button>
+            <button class="bot-ctrl" onclick="botStepBack()" title="Step back">◀</button>
+            <button class="bot-ctrl bot-ctrl-play" id="botPlayPauseBtn" onclick="botPlayPause()" title="Play/Pause">▶</button>
+            <button class="bot-ctrl" onclick="botStepForward()" title="Step forward">▶|</button>
+            <button class="bot-ctrl" onclick="botFastForward()" title="Skip to end">⏭</button>
+          </div>
+          <div class="bot-timeline-row">
+            <input type="range" id="botTimeline" min="0" max="0" value="0" class="bot-timeline" oninput="botSeek(Number(this.value))">
+            <div id="botTimelineLabel" class="bot-timeline-label">0 / 0</div>
+          </div>
+          <div class="bot-speed-row">
+            <span class="small">Speed:</span>
+            <button class="bot-speed-btn" data-speed="2000" onclick="setBotSpeed(2000, this)">0.5×</button>
+            <button class="bot-speed-btn active" data-speed="1000" onclick="setBotSpeed(1000, this)">1×</button>
+            <button class="bot-speed-btn" data-speed="500" onclick="setBotSpeed(500, this)">2×</button>
+            <button class="bot-speed-btn" data-speed="150" onclick="setBotSpeed(150, this)">Fast</button>
+          </div>
+        </div>
+
+        <!-- Decision log -->
+        <div class="panel">
+          <h2>Decision Log</h2>
+          <div id="botLog" class="bot-log"></div>
+        </div>
+
+      </div>
+    </div><!-- /botPanel -->
 
   </div><!-- /main -->
 

@@ -80,22 +80,22 @@ function log(msg,good=false){ logLines.unshift(`<p class="${good?"log-good":""}"
 
 // ─── View management ──────────────────────────────────────────────────────────
 function showSetup(){
-  // Exit simulator mode if active: unhide game panels and hide sim panel
+  // Exit simulator/bot mode if active: unhide game panels and hide their panels
   const simPanel = document.getElementById("simulatorPanel");
+  const botPanel = document.getElementById("botPanel");
   const leftPanel = document.getElementById("leftPanel");
   const rightPanel = document.getElementById("rightPanel");
   if(simPanel) simPanel.classList.add("hidden");
+  if(botPanel) botPanel.classList.add("hidden");
   if(leftPanel) leftPanel.classList.remove("hidden");
   if(rightPanel) rightPanel.classList.remove("hidden");
 
-  // If the mode dropdown is still set to "simulator", flip it back to "digital"
-  // so Start Game will actually render the board
+  // If the mode dropdown is still set to a non-game mode, flip it back to "digital"
   const playMode = document.getElementById("playMode");
-  if(playMode && playMode.value === "simulator") playMode.value = "digital";
+  if(playMode && (playMode.value === "simulator" || playMode.value === "bot")) playMode.value = "digital";
 
   document.getElementById("setupCard").classList.remove("hidden");
   document.getElementById("gameMenu").classList.add("hidden");
-  // Hide the entire game board when showing setup
   const board=document.getElementById("gameBoardArea");
   if(board) board.classList.add("hidden");
 }
@@ -111,6 +111,7 @@ function hideSetup(){
 function onModeChange(){
   const m=mode();
   const simPanel=document.getElementById("simulatorPanel");
+  const botPanel=document.getElementById("botPanel");
   const board=document.getElementById("gameBoardArea");
   const leftPanel=document.getElementById("leftPanel");
   const rightPanel=document.getElementById("rightPanel");
@@ -119,11 +120,25 @@ function onModeChange(){
     if(board) board.classList.add("hidden");
     if(leftPanel) leftPanel.classList.add("hidden");
     if(rightPanel) rightPanel.classList.add("hidden");
+    if(botPanel) botPanel.classList.add("hidden");
     document.getElementById("setupCard").classList.add("hidden");
     document.getElementById("gameMenu").classList.add("hidden");
     if(simPanel) simPanel.classList.remove("hidden");
+  } else if(m==="bot"){
+    if(board) board.classList.add("hidden");
+    if(leftPanel) leftPanel.classList.add("hidden");
+    if(rightPanel) rightPanel.classList.add("hidden");
+    if(simPanel) simPanel.classList.add("hidden");
+    document.getElementById("setupCard").classList.add("hidden");
+    document.getElementById("gameMenu").classList.add("hidden");
+    if(botPanel) botPanel.classList.remove("hidden");
+    // Show setup view, hide replay view
+    document.getElementById("botSetupPanel").classList.remove("hidden");
+    document.getElementById("botReplayView").classList.add("hidden");
+    rebuildBotPlayerConfigs();
   } else {
     if(simPanel) simPanel.classList.add("hidden");
+    if(botPanel) botPanel.classList.add("hidden");
     if(leftPanel) leftPanel.classList.remove("hidden");
     if(rightPanel) rightPanel.classList.remove("hidden");
     if(gameStarted&&players.length){ hideSetup(); update(); }
@@ -1328,7 +1343,747 @@ document.addEventListener("keydown",e=>{
   }
 });
 
-// ─── Expose globals ───────────────────────────────────────────────────────────
+// ════════════════════════════════════════════════════════════════════════════
+// ─── BOT REPLAY MODE ────────────────────────────────────────────────────────
+// User configures each player's strategy. Bots play out a complete game and
+// every decision/state is recorded as a snapshot. User then scrubs through.
+// ════════════════════════════════════════════════════════════════════════════
+
+let botPlayerConfigs = []; // per-player: {name, strategy, params:{...}}
+let botSnapshots = [];     // array of game-state snapshots
+let botCursor = 0;         // current snapshot being shown
+let botPlaying = false;
+let botPlayTimer = null;
+let botPlaySpeedMs = 1000;
+let botFinalResult = null; // {winners, winningScore}
+
+// ── Strategy decision functions (inline copies from sim-worker, parameterised) ──
+
+function botDecideAggressive(ver, hand, deck, playerScore, leaderScore, p){
+  const bustThreshold = (p?.bustThreshold ?? 40) / 100;
+  const chaseFlip7    = p?.chaseFlip7 ?? true;
+  const trailingBoost = p?.trailingBoost ?? 10;
+  if(hand.length===0) return {hit:true, reason:"No cards yet — must hit."};
+  if(ver==="vengeance" && hand.includes("Zero") && uniqueNumberCount(hand)<7)
+    return {hit:true, reason:"Zero active — staying scores 0."};
+  if(chaseFlip7 && uniqueNumberCount(hand)>=6)
+    return {hit:true, reason:"6 unique numbers — chase Flip 7 bonus."};
+  const total = Object.values(deck).reduce((a,b)=>a+b,0);
+  if(total<=0) return {hit:false, reason:"No cards left."};
+  let bustCards=0;
+  for(const [c,n] of Object.entries(deck)){ if(n>0 && wouldBust(hand,c)) bustCards+=n; }
+  const bust = bustCards/total;
+  const behind = Math.max(0, leaderScore - playerScore);
+  const adj = bustThreshold + (behind > 30 ? trailingBoost/100 : 0);
+  if(bust < adj){
+    return {hit:true, reason:`Bust risk ${(bust*100).toFixed(0)}% < threshold ${(adj*100).toFixed(0)}%.`};
+  }
+  return {hit:false, reason:`Bust risk ${(bust*100).toFixed(0)}% ≥ threshold ${(adj*100).toFixed(0)}%.`};
+}
+
+function botDecideConservative(ver, hand, deck, playerScore, leaderScore, p){
+  const stayScore = p?.stayScore ?? 20;
+  const chaseFlip7 = p?.chaseFlip7 ?? false;
+  const leadingPenalty = p?.leadingPenalty ?? 0;
+  if(hand.length===0) return {hit:true, reason:"No cards yet — must hit."};
+  if(ver==="vengeance" && hand.includes("Zero") && uniqueNumberCount(hand)<7)
+    return {hit:true, reason:"Zero active — staying scores 0."};
+  if(chaseFlip7 && uniqueNumberCount(hand)>=6)
+    return {hit:true, reason:"6 unique numbers — chase Flip 7."};
+  const isLeading = playerScore >= leaderScore;
+  const threshold = stayScore - (isLeading ? leadingPenalty : 0);
+  const rs = score(hand);
+  if(rs < threshold){
+    return {hit:true, reason:`Round score ${rs} < threshold ${threshold}${isLeading?" (leading penalty)":""}.`};
+  }
+  return {hit:false, reason:`Round score ${rs} ≥ threshold ${threshold}${isLeading?" (leading penalty)":""}.`};
+}
+
+function botDecideAdaptive(ver, hand, deck, playerScore, leaderScore, p){
+  const base = p?.baseThreshold ?? 22;
+  const trailingBoost = p?.trailingBoost ?? 10;
+  const leadingPenalty = p?.leadingPenalty ?? 4;
+  if(hand.length===0) return {hit:true, reason:"No cards yet — must hit."};
+  if(ver==="vengeance" && hand.includes("Zero") && uniqueNumberCount(hand)<7)
+    return {hit:true, reason:"Zero active — staying scores 0."};
+  if(uniqueNumberCount(hand)>=6) return {hit:true, reason:"6 unique numbers — chase Flip 7."};
+
+  const total = Object.values(deck).reduce((a,b)=>a+b,0);
+  if(total<=0) return {hit:false, reason:"No cards left."};
+  let bustCards=0;
+  for(const [c,n] of Object.entries(deck)){ if(n>0 && wouldBust(hand,c)) bustCards+=n; }
+  const bust = bustCards/total;
+  const rs = score(hand);
+  const behind = Math.max(0, leaderScore - playerScore);
+  let threshold = base;
+  if(behind > 40) threshold += trailingBoost;
+  else if(behind > 20) threshold += Math.floor(trailingBoost/2);
+  if(playerScore >= leaderScore) threshold -= leadingPenalty;
+
+  if(rs < threshold && bust < 0.30)
+    return {hit:true, reason:`Score ${rs} < threshold ${threshold} and bust ${(bust*100).toFixed(0)}% < 30%.`};
+  if(rs < threshold+15 && bust < 0.15)
+    return {hit:true, reason:`Score ${rs} < threshold+15 and bust ${(bust*100).toFixed(0)}% < 15%.`};
+  if(bust < 0.07 && rs < 50)
+    return {hit:true, reason:`Very safe (bust ${(bust*100).toFixed(0)}% < 7%).`};
+  return {hit:false, reason:`Bust risk ${(bust*100).toFixed(0)}% too high for score ${rs}.`};
+}
+
+// MCTS decision uses existing mctsDecision() inline — fast enough for bot mode
+function botDecideMcts(ver, hand, deck, playerScore, leaderScore, p, ctx){
+  // For bots, use the synchronous EV-based MCTS decision available in app.js
+  // (the True MCTS worker is async and would require a callback pattern;
+  //  the sync EV decision is the same logic the digital mode uses as a fallback)
+  if(!ctx) ctx = {};
+  const playerIdx = ctx.playerIdx;
+  const oldPlayers = players;
+  // Temporarily swap state for evalPlayer
+  players = ctx.players;
+  const targetPlayer = players[playerIdx];
+  const evResult = evalPlayer(targetPlayer, deck);
+  players = oldPlayers;
+  const rec = evResult.rec;
+  return {
+    hit: rec === "HIT",
+    reason: `MCTS EV: hit=${evResult.ev.toFixed(1)}, stay=${evResult.current}, bust=${evResult.bust.toFixed(0)}%.`
+  };
+}
+
+function runBotStrategy(ctx, p, hand, deck, playerScore, leaderScore){
+  const params = p.params || {};
+  switch(p.strategy){
+    case "aggressive":   return botDecideAggressive  (ctx.version, hand, deck, playerScore, leaderScore, params);
+    case "conservative": return botDecideConservative(ctx.version, hand, deck, playerScore, leaderScore, params);
+    case "adaptive":     return botDecideAdaptive    (ctx.version, hand, deck, playerScore, leaderScore, params);
+    case "mcts":         return botDecideMcts        (ctx.version, hand, deck, playerScore, leaderScore, params, ctx);
+    default:             return botDecideAdaptive    (ctx.version, hand, deck, playerScore, leaderScore, params);
+  }
+}
+
+// ── Bot setup UI ──
+
+const STRATEGY_LABEL = {
+  aggressive: "🔴 Aggressive",
+  conservative: "🔵 Conservative",
+  adaptive: "🟢 Adaptive",
+  mcts: "🎯 True MCTS (EV)"
+};
+
+function rebuildBotPlayerConfigs(){
+  const n = Math.max(2, Math.min(10, Number(document.getElementById("botPlayerCount").value) || 4));
+  // Preserve existing configs if count matches
+  while(botPlayerConfigs.length < n){
+    const i = botPlayerConfigs.length;
+    botPlayerConfigs.push({
+      name: `Bot ${i+1}`,
+      strategy: ["aggressive","conservative","adaptive","mcts"][i % 4],
+      params: defaultParams(["aggressive","conservative","adaptive","mcts"][i % 4]),
+      expanded: false
+    });
+  }
+  while(botPlayerConfigs.length > n) botPlayerConfigs.pop();
+  renderBotPlayerConfigs();
+}
+
+function defaultParams(strategy){
+  if(strategy==="aggressive")   return {bustThreshold:40, chaseFlip7:true,  trailingBoost:10};
+  if(strategy==="conservative") return {stayScore:20,     chaseFlip7:false, leadingPenalty:0};
+  if(strategy==="adaptive")     return {baseThreshold:22, trailingBoost:10, leadingPenalty:4};
+  return {};
+}
+
+function renderBotPlayerConfigs(){
+  const el = document.getElementById("botPlayerConfigs");
+  if(!el) return;
+  el.innerHTML = botPlayerConfigs.map((p, i) => `
+    <div class="bot-player-card">
+      <div class="bot-player-header" onclick="toggleBotPlayerExpand(${i})">
+        <input class="bot-player-name" value="${p.name.replace(/"/g,"&quot;")}" onclick="event.stopPropagation()" oninput="setBotPlayerName(${i}, this.value)">
+        <select class="bot-player-strategy" onchange="setBotPlayerStrategy(${i}, this.value)" onclick="event.stopPropagation()">
+          ${Object.keys(STRATEGY_LABEL).map(k =>
+            `<option value="${k}" ${p.strategy===k?"selected":""}>${STRATEGY_LABEL[k]}</option>`).join("")}
+        </select>
+        <span class="bot-expand-arrow">${p.expanded ? "▾" : "▸"}</span>
+      </div>
+      ${p.expanded ? `<div class="bot-player-params">${renderBotParamControls(i, p)}</div>` : ""}
+    </div>`).join("");
+}
+
+function renderBotParamControls(idx, p){
+  if(p.strategy === "mcts"){
+    return `<div class="small bot-mcts-info">True MCTS uses expected-value calculation. No additional parameters.</div>`;
+  }
+  const params = p.params;
+  const fields = [];
+
+  if(p.strategy === "aggressive"){
+    fields.push(sliderField(idx, "bustThreshold", "Bust threshold (%)", params.bustThreshold, 10, 80, "Stop hitting when bust chance exceeds this."));
+    fields.push(toggleField(idx, "chaseFlip7", "Chase Flip 7 at 6 unique", params.chaseFlip7));
+    fields.push(sliderField(idx, "trailingBoost", "Trailing boost (%)", params.trailingBoost, 0, 30, "Extra bust tolerance when behind by 30+ pts."));
+  } else if(p.strategy === "conservative"){
+    fields.push(sliderField(idx, "stayScore", "Stay at score", params.stayScore, 5, 60, "Stop hitting once round score reaches this."));
+    fields.push(toggleField(idx, "chaseFlip7", "Chase Flip 7 at 6 unique", params.chaseFlip7));
+    fields.push(sliderField(idx, "leadingPenalty", "Leading penalty", params.leadingPenalty, 0, 15, "Lower the stay threshold when leading."));
+  } else if(p.strategy === "adaptive"){
+    fields.push(sliderField(idx, "baseThreshold", "Base threshold", params.baseThreshold, 10, 40, "Base round score before staying."));
+    fields.push(sliderField(idx, "trailingBoost", "Trailing boost", params.trailingBoost, 0, 25, "Extra threshold when far behind."));
+    fields.push(sliderField(idx, "leadingPenalty", "Leading penalty", params.leadingPenalty, 0, 15, "Lower threshold when leading."));
+  }
+  return fields.join("");
+}
+
+function sliderField(idx, key, label, value, min, max, help){
+  return `<div class="bot-field">
+    <label class="bot-field-label">${label} <span class="bot-field-help" title="${help.replace(/"/g,"&quot;")}">ⓘ</span></label>
+    <div class="bot-field-row">
+      <input type="range" min="${min}" max="${max}" value="${value}" class="bot-slider"
+             oninput="setBotParam(${idx}, '${key}', Number(this.value)); this.nextElementSibling.value=this.value;">
+      <input type="number" min="${min}" max="${max}" value="${value}" class="bot-number"
+             oninput="setBotParam(${idx}, '${key}', Number(this.value)); this.previousElementSibling.value=this.value;">
+    </div>
+  </div>`;
+}
+
+function toggleField(idx, key, label, value){
+  return `<div class="bot-field bot-toggle">
+    <label class="bot-toggle-label">
+      <input type="checkbox" ${value?"checked":""} onchange="setBotParam(${idx}, '${key}', this.checked)">
+      ${label}
+    </label>
+  </div>`;
+}
+
+function setBotPlayerName(idx, val){ if(botPlayerConfigs[idx]) botPlayerConfigs[idx].name = val.slice(0, 20); }
+function setBotPlayerStrategy(idx, strat){
+  if(!botPlayerConfigs[idx]) return;
+  botPlayerConfigs[idx].strategy = strat;
+  botPlayerConfigs[idx].params = defaultParams(strat);
+  renderBotPlayerConfigs();
+}
+function setBotParam(idx, key, val){
+  if(!botPlayerConfigs[idx] || !botPlayerConfigs[idx].params) return;
+  botPlayerConfigs[idx].params[key] = val;
+}
+function toggleBotPlayerExpand(idx){
+  if(!botPlayerConfigs[idx]) return;
+  botPlayerConfigs[idx].expanded = !botPlayerConfigs[idx].expanded;
+  renderBotPlayerConfigs();
+}
+
+// ── Bot game simulation: play full game synchronously, record snapshots ──
+
+function startBotGame(){
+  const ver = document.getElementById("botVersion").value;
+  const tgt = Math.max(50, Number(document.getElementById("botTargetScore").value) || 200);
+
+  // Reset state
+  botSnapshots = [];
+  botCursor = 0;
+  botFinalResult = null;
+  botPlaying = false;
+  if(botPlayTimer){ clearTimeout(botPlayTimer); botPlayTimer = null; }
+
+  // Set the game version in the main dropdown so cfg()/version() work
+  document.getElementById("gameVersion").value = ver;
+
+  // Toast
+  toast("Running bot game...", "info");
+
+  // Run simulation synchronously (small enough to be instant for most games)
+  setTimeout(() => {
+    try {
+      playBotGame(ver, tgt);
+      document.getElementById("botSetupPanel").classList.add("hidden");
+      document.getElementById("botReplayView").classList.remove("hidden");
+      botCursor = 0;
+      renderBotSnapshot();
+    } catch(err){
+      console.error("Bot game error:", err);
+      toast("Bot game failed: " + err.message, "warn");
+    }
+  }, 10);
+}
+
+function playBotGame(ver, tgt){
+  // Build initial game state. Reuse main game state variables so all the
+  // existing helpers (score, wouldBust, cleanVengeanceHand, evalPlayer, isAction)
+  // work against this state. We save & restore the main state afterward.
+  const savedPlayers = players;
+  const savedActive = active;
+  const savedDealer = dealer;
+  const savedDiscard = discard;
+  const savedRound = round;
+  const savedGameStarted = gameStarted;
+  const savedGameOver = gameOver;
+  const savedTargetScore = targetScore;  // module-level var
+  const savedPending = pending;
+  const savedPendingQueue = pendingActionQueue;
+  const savedForcedDraw = forcedDraw;
+
+  try {
+    // Initialize bot game state
+    players = botPlayerConfigs.map(p => ({
+      name: p.name,
+      hand: [], bustedHand: [],
+      stayed: false, busted: false, score: 0,
+      strategy: p.strategy, params: p.params
+    }));
+    active = 0; dealer = 0; discard = []; round = 1;
+    gameStarted = true; gameOver = false; targetScore = tgt;
+    pending = null; pendingActionQueue = []; forcedDraw = null;
+    invalidateDeckCache();
+
+    // Take initial snapshot
+    recordSnapshot("Game started", "info", null);
+
+    let safetyOuter = 0;
+    while(!gameOver && safetyOuter++ < 100){
+      // Reset round
+      players.forEach(p => { p.hand=[]; p.bustedHand=[]; p.stayed=false; p.busted=false; });
+      invalidateDeckCache();
+      recordSnapshot(`── Round ${round} ──`, "round", null);
+
+      let safetyInner = 0;
+      active = dealer;
+      let roundDone = false;
+      while(!roundDone && safetyInner++ < 500){
+        // All stayed/busted?
+        if(players.every(p => p.stayed || p.busted)){
+          roundDone = true;
+          break;
+        }
+        const p = players[active];
+        if(!p.stayed && !p.busted){
+          // Get bot decision
+          const leaderScore = Math.max(...players.map(x => x.score));
+          const ctx = {version: ver, players, playerIdx: active};
+          const decision = runBotStrategy(ctx, p, p.hand, getDeck(), p.score, leaderScore);
+
+          // Get MCTS comparison
+          const mctsResult = evalPlayer(p, getDeck());
+          const mctsRec = mctsResult.rec;
+          const mctsAgrees = (decision.hit && mctsRec==="HIT") || (!decision.hit && mctsRec==="STAY");
+
+          if(decision.hit){
+            const card = drawRandomCard();
+            if(!card){
+              p.stayed = true;
+              recordSnapshot(`${p.name}: STAY (deck empty)`, "decision", {
+                playerIdx: active, action: "stay",
+                botReason: "Deck empty.",
+                mctsRec, mctsReason: mctsResult.reason, mctsAgrees: true
+              });
+              advanceActive();
+              continue;
+            }
+            // Apply the card
+            const bust = wouldBust(p.hand, card);
+            if(bust && !(ver==="classic" && p.hand.includes("Second Chance"))){
+              p.hand.push(card);
+              p.bustedHand = [...p.hand]; p.hand = []; p.busted = true;
+              invalidateDeckCache();
+              recordSnapshot(`${p.name}: HIT ${card} → BUST!`, "bust", {
+                playerIdx: active, action: "hit", card,
+                botReason: decision.reason,
+                mctsRec, mctsReason: mctsResult.reason, mctsAgrees,
+                outcome: "bust"
+              });
+            } else if(bust){
+              // Second Chance used
+              p.hand.splice(p.hand.indexOf("Second Chance"), 1);
+              discard.push("Second Chance", card);
+              invalidateDeckCache();
+              recordSnapshot(`${p.name}: HIT ${card} → Second Chance saved!`, "info", {
+                playerIdx: active, action: "hit", card,
+                botReason: decision.reason,
+                mctsRec, mctsReason: mctsResult.reason, mctsAgrees,
+                outcome: "saved"
+              });
+            } else {
+              p.hand.push(card);
+              if(ver==="vengeance" && card==="Unlucky 7"){
+                const cleaned = cleanVengeanceHand(p.hand);
+                p.hand = cleaned.hand; discard.push(...cleaned.removed);
+              }
+              invalidateDeckCache();
+              recordSnapshot(`${p.name}: HIT ${card}`, "hit", {
+                playerIdx: active, action: "hit", card,
+                botReason: decision.reason,
+                mctsRec, mctsReason: mctsResult.reason, mctsAgrees,
+                outcome: "safe"
+              });
+              // Resolve action cards inline (simplified bot behavior)
+              if(isAction(card)){
+                resolveBotAction(active, card);
+              }
+              // Check Flip 7
+              if(hasFlip7(p)){
+                recordSnapshot(`${p.name} hit Flip 7! Round ends.`, "flip7", {playerIdx: active});
+                // Force all other players to stay
+                players.forEach(q => { if(!q.stayed && !q.busted) q.stayed = true; });
+                roundDone = true;
+                break;
+              }
+            }
+          } else {
+            // Stay
+            p.stayed = true;
+            recordSnapshot(`${p.name}: STAY at ${score(p.hand)}`, "stay", {
+              playerIdx: active, action: "stay",
+              botReason: decision.reason,
+              mctsRec, mctsReason: mctsResult.reason, mctsAgrees,
+              outcome: "stay"
+            });
+          }
+        }
+        advanceActive();
+      }
+
+      // Score the round
+      players.forEach(p => { if(!p.busted) p.score += score(p.hand); });
+      const lines = players.map(p => `${p.name}: ${p.score}`).join(" · ");
+      recordSnapshot(`Round ${round} ends. Scores: ${lines}`, "round-end", null);
+
+      // Check game over
+      if(players.some(p => p.score >= targetScore)){
+        const high = Math.max(...players.map(p => p.score));
+        const winners = players.filter(p => p.score === high);
+        botFinalResult = {winners: winners.map(w => w.name), winningScore: high};
+        gameOver = true;
+        recordSnapshot(`🏆 Game over. ${winners.map(w=>w.name).join(", ")} wins with ${high}!`, "winner", null);
+        break;
+      }
+
+      dealer = (dealer + 1) % players.length;
+      round++;
+    }
+  } finally {
+    // Restore main game state
+    players = savedPlayers;
+    active = savedActive;
+    dealer = savedDealer;
+    discard = savedDiscard;
+    round = savedRound;
+    gameStarted = savedGameStarted;
+    gameOver = savedGameOver;
+    targetScore = savedTargetScore;
+    pending = savedPending;
+    pendingActionQueue = savedPendingQueue;
+    forcedDraw = savedForcedDraw;
+    invalidateDeckCache();
+  }
+}
+
+function advanceActive(){
+  for(let i=1; i<=players.length; i++){
+    const idx = (active + i) % players.length;
+    if(!players[idx].stayed && !players[idx].busted){ active = idx; return; }
+  }
+}
+
+// Simplified action card resolution for bot mode.
+// Bots use deterministic targeting (always pick the highest-scoring opponent).
+function resolveBotAction(actorIdx, card){
+  const actor = players[actorIdx];
+  if(card === "Freeze"){
+    actor.stayed = true;
+    discardActionCard(actorIdx, card);
+    return;
+  }
+  if(card === "Second Chance"){ return; } // Held in hand, no immediate effect
+
+  const alive = players.map((p,i) => ({p,i})).filter(x => !x.p.busted);
+  const opps  = alive.filter(x => x.i !== actorIdx);
+
+  // Helper: highest-scoring among set
+  const highest = arr => arr.length ? arr.slice().sort((a,b)=>score(b.p.hand)-score(a.p.hand))[0] : null;
+
+  if(card === "Just One More"){
+    const t = highest(alive); if(!t) return;
+    const c = drawRandomCard();
+    if(c){
+      if(wouldBust(t.p.hand, c)){
+        t.p.hand.push(c); t.p.bustedHand = [...t.p.hand]; t.p.hand = []; t.p.busted = true;
+        recordSnapshot(`${actor.name}'s Just One More: ${t.p.name} forced to draw ${c} → BUST!`, "bust", null);
+      } else {
+        t.p.hand.push(c);
+        if(version()==="vengeance" && c==="Unlucky 7"){
+          const cleaned = cleanVengeanceHand(t.p.hand);
+          t.p.hand = cleaned.hand; discard.push(...cleaned.removed);
+        }
+        if(!t.p.busted) t.p.stayed = true;
+        recordSnapshot(`${actor.name}'s Just One More: ${t.p.name} forced to draw ${c}, then stays`, "action", null);
+      }
+    }
+    discardActionCard(actorIdx, card);
+    return;
+  }
+
+  if(card === "Flip Four" || card === "Flip Three"){
+    const t = highest(alive); if(!t) return;
+    const max = card === "Flip Four" ? 4 : 3;
+    const buffered = [];
+    let busted = false;
+    for(let i=0; i<max; i++){
+      if(t.p.busted || uniqueNumberCount(t.p.hand)>=7) break;
+      const c = drawRandomCard(); if(!c) break;
+      if(wouldBust(t.p.hand, c)){
+        t.p.hand.push(c); t.p.bustedHand = [...t.p.hand]; t.p.hand = []; t.p.busted = true;
+        recordSnapshot(`${actor.name}'s ${card}: ${t.p.name} drew ${c} → BUST!`, "bust", null);
+        busted = true; break;
+      }
+      t.p.hand.push(c);
+      if(version()==="vengeance" && c==="Unlucky 7"){
+        const cleaned = cleanVengeanceHand(t.p.hand);
+        t.p.hand = cleaned.hand; discard.push(...cleaned.removed);
+      }
+      recordSnapshot(`${actor.name}'s ${card}: ${t.p.name} drew ${c}`, "action", null);
+      if(isAction(c)) buffered.push(c);
+    }
+    // Per official rules: only resolve buffered actions if target survived
+    if(!busted){
+      buffered.forEach(c => resolveBotAction(t.i, c));
+    }
+    discardActionCard(actorIdx, card);
+    return;
+  }
+
+  if(card === "Steal"){
+    const t = highest(opps.filter(x => x.p.hand.some(c => !isAction(c) && !isInternalMarker(c))));
+    if(!t){ discardActionCard(actorIdx, card); return; }
+    // Pick best non-action card that wouldn't bust us
+    const candidates = t.p.hand.map((c,i)=>({c,i})).filter(x =>
+      !isAction(x.c) && !isInternalMarker(x.c) &&
+      !["-2","-4","-6","-8","-10","÷2","Zero"].includes(x.c) &&
+      !wouldBust(actor.hand, x.c));
+    if(!candidates.length){ discardActionCard(actorIdx, card); return; }
+    candidates.sort((a,b) => cardVal(b.c) - cardVal(a.c));
+    const stolen = t.p.hand.splice(candidates[0].i, 1)[0];
+    actor.hand.push(stolen);
+    recordSnapshot(`${actor.name} steals ${stolen} from ${t.p.name}`, "action", null);
+    discardActionCard(actorIdx, card);
+    return;
+  }
+
+  if(card === "Discard"){
+    const t = highest(alive.filter(x => x.p.hand.some(c => !isAction(c) && !isInternalMarker(c))));
+    if(!t){ discardActionCard(actorIdx, card); return; }
+    const candidates = t.p.hand.map((c,i)=>({c,i})).filter(x =>
+      !isAction(x.c) && !isInternalMarker(x.c) &&
+      !["-2","-4","-6","-8","-10","÷2","Zero"].includes(x.c));
+    if(!candidates.length){ discardActionCard(actorIdx, card); return; }
+    candidates.sort((a,b) => cardVal(b.c) - cardVal(a.c));
+    const [removed] = t.p.hand.splice(candidates[0].i, 1);
+    discard.push(removed);
+    recordSnapshot(`${actor.name} discards ${removed} from ${t.p.name}`, "action", null);
+    discardActionCard(actorIdx, card);
+    return;
+  }
+
+  if(card === "Swap"){
+    const t = highest(opps.filter(x => x.p.hand.some(c => !isAction(c) && !isInternalMarker(c))));
+    if(!t){ discardActionCard(actorIdx, card); return; }
+    // Find best swap pair
+    let bestSwap = null, bestDelta = -Infinity;
+    actor.hand.forEach((mine, mi) => {
+      if(!isAction(mine) && !isInternalMarker(mine)){
+        t.p.hand.forEach((theirs, ti) => {
+          if(isAction(theirs) || isInternalMarker(theirs)) return;
+          if(["-2","-4","-6","-8","-10","÷2","Zero"].includes(theirs)) return;
+          // Check bust for both
+          const myAfter = [...actor.hand.filter((_,k)=>k!==mi), theirs];
+          const theirAfter = [...t.p.hand.filter((_,k)=>k!==ti), mine];
+          if(handHasDuplicateNumber(myAfter)) return;
+          if(handHasDuplicateNumber(theirAfter)) return;
+          const myGain = score(myAfter) - score(actor.hand);
+          const theirLoss = score(t.p.hand) - score(theirAfter);
+          const delta = myGain + theirLoss;
+          if(delta > bestDelta){ bestDelta = delta; bestSwap = {mi, ti, mine, theirs}; }
+        });
+      }
+    });
+    if(!bestSwap){ discardActionCard(actorIdx, card); return; }
+    const tmp = actor.hand[bestSwap.mi];
+    actor.hand[bestSwap.mi] = t.p.hand[bestSwap.ti];
+    t.p.hand[bestSwap.ti] = tmp;
+    recordSnapshot(`${actor.name} swaps ${bestSwap.mine} for ${t.p.name}'s ${bestSwap.theirs}`, "action", null);
+    discardActionCard(actorIdx, card);
+    return;
+  }
+
+  // Unknown action — just discard it
+  discardActionCard(actorIdx, card);
+}
+
+// Snapshot the entire visible game state at this moment
+function recordSnapshot(logLine, type, decision){
+  botSnapshots.push({
+    logLine, type, decision,
+    round, activeIdx: active, dealerIdx: dealer,
+    players: players.map(p => ({
+      name: p.name, hand: [...p.hand], bustedHand: [...p.bustedHand],
+      stayed: p.stayed, busted: p.busted, score: p.score,
+      strategy: p.strategy
+    })),
+    discard: [...discard]
+  });
+}
+
+// ── Replay UI rendering ──
+
+function renderBotSnapshot(){
+  if(!botSnapshots.length){
+    document.getElementById("botPlayersGrid").innerHTML = "<div class='small'>No data.</div>";
+    return;
+  }
+  const cursor = Math.max(0, Math.min(botCursor, botSnapshots.length - 1));
+  const snap = botSnapshots[cursor];
+
+  // Header labels
+  document.getElementById("botRoundLabel").innerText = `Round ${snap.round}`;
+  const dec = snap.decision;
+  let turnLabel = snap.logLine;
+  if(snap.type === "round") turnLabel = `Starting round ${snap.round}`;
+  document.getElementById("botTurnLabel").innerText = turnLabel;
+
+  // Winner banner
+  const banner = document.getElementById("botWinnerBanner");
+  if(snap.type === "winner" && botFinalResult){
+    banner.classList.remove("hidden");
+    banner.innerHTML = `🏆 <b>${botFinalResult.winners.join(", ")}</b> wins with <b>${botFinalResult.winningScore}</b> points!`;
+  } else {
+    banner.classList.add("hidden");
+  }
+
+  // Player dashboard for this snapshot
+  renderBotPlayersGrid(snap);
+
+  // MCTS disagreement annotation
+  const annotation = document.getElementById("botAnnotation");
+  if(dec && dec.action && dec.mctsRec && !dec.mctsAgrees){
+    annotation.classList.remove("hidden");
+    const botChose = dec.action === "hit" ? "HIT" : "STAY";
+    document.getElementById("botAnnotationBody").innerHTML = `
+      <div class="bot-annotation-line"><b>Bot chose:</b> ${botChose}<div class="small">${dec.botReason||""}</div></div>
+      <div class="bot-annotation-line bot-mcts-line"><b>MCTS suggested:</b> ${dec.mctsRec}<div class="small">${dec.mctsReason||""}</div></div>`;
+  } else {
+    annotation.classList.add("hidden");
+  }
+
+  // Timeline
+  document.getElementById("botTimeline").max = botSnapshots.length - 1;
+  document.getElementById("botTimeline").value = cursor;
+  document.getElementById("botTimelineLabel").innerText = `${cursor + 1} / ${botSnapshots.length}`;
+
+  // Log (full) — highlight current line, click any line to jump
+  renderBotLog(cursor);
+
+  // Play/Pause icon
+  document.getElementById("botPlayPauseBtn").innerText = botPlaying ? "⏸" : "▶";
+}
+
+function renderBotPlayersGrid(snap){
+  const el = document.getElementById("botPlayersGrid");
+  if(!el) return;
+  el.innerHTML = snap.players.map((p,i) => {
+    const isActive = i === snap.activeIdx && !p.stayed && !p.busted;
+    const status = p.busted ? "OUT" : p.stayed ? "STAY" : isActive ? "TURN" : "WAIT";
+    const rs = p.busted ? 0 : scoreInSnapshot(p.hand, snap);
+    const cards = p.busted
+      ? p.bustedHand.map(c => cardImageHtml(c, true, true)).join("")
+      : visibleCards(p.hand).map(c => cardImageHtml(c, false, true)).join("");
+    return `<div class="player-row ${isActive?"active":""} ${p.stayed?"stayed":""} ${p.busted?"busted":""}">
+      <div class="player-name-cell">
+        <div class="player-name-main">${p.name} ${i===snap.dealerIdx?"🂡":""}</div>
+        <div class="player-status-mini">${status} · ${STRATEGY_LABEL[p.strategy]||p.strategy}</div>
+      </div>
+      <div class="player-stat-mini">Game<b>${p.score}</b></div>
+      <div class="player-stat-mini">Round<b>${rs}</b></div>
+      <div><div class="hand-strip">${cards || '<span class="dashboard-note">No cards</span>'}</div></div>
+    </div>`;
+  }).join("");
+}
+
+// Score a hand using the snapshot's version (since gameVersion dropdown may differ)
+function scoreInSnapshot(hand, snap){
+  // We use the main score() which uses version() from the dropdown.
+  // The dropdown was set to botVersion when bot game started, so this works
+  // unless user changed it. Just call score() directly for now.
+  return score(hand);
+}
+
+function renderBotLog(cursor){
+  const el = document.getElementById("botLog");
+  if(!el) return;
+  // Show all snapshots as log lines (most recent first? or in order?)
+  // Use in-order (top = round 1, bottom = game end) since that's how a game log reads
+  el.innerHTML = botSnapshots.map((s, i) => {
+    const cls = ["bot-log-line", "bot-log-" + s.type, i===cursor?"bot-log-current":""].join(" ");
+    const disagree = s.decision && s.decision.mctsRec && !s.decision.mctsAgrees;
+    const flag = disagree ? `<span class="bot-log-flag" title="MCTS disagrees">⚡</span>` : "";
+    return `<div class="${cls}" onclick="botSeek(${i})">${flag}${s.logLine}</div>`;
+  }).join("");
+  // Scroll current line into view
+  const current = el.querySelector(".bot-log-current");
+  if(current) current.scrollIntoView({block:"nearest", behavior:"smooth"});
+}
+
+// ── Playback controls ──
+
+function botPlayPause(){
+  if(botPlaying){ botPause(); } else { botPlay(); }
+}
+function botPlay(){
+  if(botCursor >= botSnapshots.length - 1){ botCursor = 0; }
+  botPlaying = true;
+  botStepForward();
+  if(botPlayTimer) clearTimeout(botPlayTimer);
+  botPlayTimer = setInterval(() => {
+    if(botCursor >= botSnapshots.length - 1){ botPause(); return; }
+    botCursor++;
+    renderBotSnapshot();
+  }, botPlaySpeedMs);
+  document.getElementById("botPlayPauseBtn").innerText = "⏸";
+}
+function botPause(){
+  botPlaying = false;
+  if(botPlayTimer){ clearInterval(botPlayTimer); botPlayTimer = null; }
+  document.getElementById("botPlayPauseBtn").innerText = "▶";
+}
+function botStepForward(){
+  if(botCursor < botSnapshots.length - 1){ botCursor++; renderBotSnapshot(); }
+}
+function botStepBack(){
+  if(botCursor > 0){ botCursor--; renderBotSnapshot(); }
+}
+function botRewind(){
+  botPause();
+  botCursor = 0;
+  renderBotSnapshot();
+}
+function botFastForward(){
+  botPause();
+  botCursor = botSnapshots.length - 1;
+  renderBotSnapshot();
+}
+function botSeek(idx){
+  botPause();
+  botCursor = Math.max(0, Math.min(idx, botSnapshots.length - 1));
+  renderBotSnapshot();
+}
+function setBotSpeed(ms, btn){
+  botPlaySpeedMs = ms;
+  document.querySelectorAll(".bot-speed-btn").forEach(b => b.classList.remove("active"));
+  if(btn) btn.classList.add("active");
+  // If playing, restart timer at new speed
+  if(botPlaying){ botPause(); botPlay(); }
+}
+function exitBotReplay(){
+  botPause();
+  document.getElementById("botSetupPanel").classList.remove("hidden");
+  document.getElementById("botReplayView").classList.add("hidden");
+}
+
 Object.assign(window,{
   openMetricInfo,closeMetricInfo,canResolvePendingAction,toggleInfo,
   updateCornerRecommendation,checkGameOver,closeGameOverModal,startNewGameFromGameOver,
@@ -1337,7 +2092,12 @@ Object.assign(window,{
   chooseCard,confirmCardAction,doCardAction,chooseSwapMine,chooseSwapTheirs,
   confirmSwap,doSwap,reopenPendingAction,discardActionAndContinue,openAction,
   closeActionModal,onModeChange,startSimulation,cancelSimulation,
-  cancelForcedDraw
+  cancelForcedDraw,
+  // Bot mode
+  rebuildBotPlayerConfigs, startBotGame,
+  setBotPlayerName, setBotPlayerStrategy, setBotParam, toggleBotPlayerExpand,
+  botPlayPause, botStepForward, botStepBack, botRewind, botFastForward,
+  botSeek, setBotSpeed, exitBotReplay
 });
 
 // ─── Init: wait for DOM ───────────────────────────────────────────────────────
@@ -1346,6 +2106,7 @@ document.addEventListener("DOMContentLoaded",()=>{
   document.getElementById("turnTitle").innerText="Press Start Game";
   document.getElementById("turnDetails").innerHTML="Choose setup options above, then press Start Game.";
   document.getElementById("simulatorPanel").classList.add("hidden");
+  document.getElementById("botPanel").classList.add("hidden");
 
   if(loadState() && gameStarted && players.length){
     hideSetup();
