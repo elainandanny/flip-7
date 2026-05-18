@@ -1019,24 +1019,174 @@ function updateSimProgress(msg){
   }
 }
 function showSimResults(result){
-  simRunning=false;document.getElementById("startSimBtn").disabled=false;
+  simRunning = false;
+  document.getElementById("startSimBtn").disabled = false;
   document.getElementById("simProgressArea").classList.add("hidden");
   document.getElementById("simResultsArea").classList.remove("hidden");
-  const names={aggressive:"Aggressive",conservative:"Conservative",adaptive:"Adaptive"};
-  const colors={aggressive:"#bc2634",conservative:"#1f5fbf",adaptive:"#138a35"};
-  const maxWin=Math.max(...Object.values(result.finalRates).map(r=>r.winRate),1);
-  const barChart=Object.entries(result.finalRates).map(([s,r])=>`<div class="sim-bar-row"><span class="sim-bar-label">${names[s]}</span><div class="sim-bar-track"><div class="sim-bar-fill" style="width:${(r.winRate/maxWin*100)}%;background:${colors[s]}"></div></div><span class="sim-bar-value">${r.winRate.toFixed(1)}%</span></div>`).join("");
-  const maxAvg=Math.max(...Object.values(result.finalRates).map(r=>r.avgStayScore),1);
-  const stayChart=Object.entries(result.finalRates).map(([s,r])=>`<div class="sim-bar-row"><span class="sim-bar-label">${names[s]}</span><div class="sim-bar-track"><div class="sim-bar-fill" style="width:${(r.avgStayScore/maxAvg*100)}%;background:${colors[s]}"></div></div><span class="sim-bar-value">${r.avgStayScore.toFixed(1)}</span></div>`).join("");
-  const hist=result.finalRates.adaptive.stayScoreHistogram;
-  const histMax=Math.max(...hist.counts,1);
-  const histBars=hist.counts.map((c,i)=>`<div class="sim-hist-col"><div class="sim-hist-bar" style="height:${(c/histMax*80)}px" title="${hist.labels[i]}: ${c}"></div><span class="sim-hist-label">${hist.labels[i].split("–")[0]}</span></div>`).join("");
-  document.getElementById("simResultsArea").innerHTML=`
-    <h3>Win Rates</h3><div class="sim-chart">${barChart}</div>
-    <h3>Average Stay Score</h3><p class="small">Higher = players held cards longer before staying.</p><div class="sim-chart">${stayChart}</div>
-    <h3>Adaptive: When Does It Stay?</h3><p class="small">Distribution of score at which Adaptive players stayed.</p><div class="sim-histogram">${histBars}</div>
-    <h3>Conclusions</h3><div class="sim-conclusions">${result.conclusions.map(c=>`<p>${c}</p>`).join("")}</div>
-    <button class="blue" onclick="startSimulation()" style="margin-top:12px;width:100%">Run Again</button>`;
+
+  const names = {aggressive:"Aggressive", conservative:"Conservative", adaptive:"Adaptive"};
+  const colors = {aggressive:"#bc2634", conservative:"#1f5fbf", adaptive:"#138a35"};
+  const strategies = ["aggressive","conservative","adaptive"];
+
+  // Helper: build a horizontal bar chart from a metric key
+  function bars(metricKey, formatter, lowerIsBetter=false){
+    const values = strategies.map(s=>result.finalRates[s][metricKey]);
+    const max = Math.max(...values, 0.01);
+    return strategies.map(s=>{
+      const v = result.finalRates[s][metricKey];
+      const width = max>0 ? (v/max*100) : 0;
+      return `<div class="sim-bar-row">
+        <span class="sim-bar-label">${names[s]}</span>
+        <div class="sim-bar-track"><div class="sim-bar-fill" style="width:${width}%;background:${colors[s]}"></div></div>
+        <span class="sim-bar-value">${formatter(v)}</span>
+      </div>`;
+    }).join("");
+  }
+
+  // ── #1+#2+#4: Risk vs reward overview (multi-metric grid) ───────────────
+  const winRatesChart = bars("winRate", v=>`${v.toFixed(1)}%`);
+  const bustChart     = bars("bustRate", v=>`${v.toFixed(1)}%`);
+  const survivingChart = bars("avgSurvivingScore", v=>v.toFixed(1));
+  const flip7Chart    = bars("flip7Rate", v=>`${v.toFixed(1)}%`);
+
+  // ── #3: Conditional hit rates table (unique cards × strategy) ────────────
+  let condTable = `<table class="sim-cond-table"><thead><tr><th>Unique #</th>`;
+  strategies.forEach(s=>{ condTable += `<th>${names[s]}</th>`; });
+  condTable += `</tr></thead><tbody>`;
+  for(let u=0; u<=7; u++){
+    condTable += `<tr><td><b>${u}</b></td>`;
+    strategies.forEach(s=>{
+      const cell = result.finalRates[s].conditionalHitRates[u];
+      if(cell.hitRate==null || cell.sampleSize<5){
+        condTable += `<td class="sim-cond-na">—</td>`;
+      } else {
+        // Color-code: green=usually hit, red=usually stay
+        const pct = cell.hitRate;
+        const cls = pct>=70?"sim-cond-hot":pct>=40?"sim-cond-mid":"sim-cond-cold";
+        condTable += `<td class="${cls}" title="${cell.sampleSize.toLocaleString()} decisions"><b>${pct.toFixed(0)}%</b></td>`;
+      }
+    });
+    condTable += `</tr>`;
+  }
+  condTable += `</tbody></table>`;
+
+  // ── #5: Average winning round score ───────────────────────────────────────
+  const winScoreChart = bars("avgWinningScore", v=>v.toFixed(1));
+
+  // ── #6: Winner-targeted rate (action card impact) ────────────────────────
+  const targetedChart = bars("winnerTargetedRate", v=>`${v.toFixed(1)}%`);
+
+  // ── #7: Stay-too-early gap ────────────────────────────────────────────────
+  const gapChart = bars("avgGapWhenStayed", v=>v.toFixed(1));
+
+  // ── #8: Standard deviation (consistency) ─────────────────────────────────
+  const stdDevChart = bars("stdDev", v=>v.toFixed(1));
+
+  // ── Adaptive stay histogram (existing) ───────────────────────────────────
+  const hist = result.finalRates.adaptive.stayScoreHistogram;
+  const histMax = Math.max(...hist.counts, 1);
+  const histBars = hist.counts.map((c,i)=>`
+    <div class="sim-hist-col">
+      <div class="sim-hist-bar" style="height:${(c/histMax*80)}px" title="${hist.labels[i]}: ${c}"></div>
+      <span class="sim-hist-label">${hist.labels[i].split("–")[0]}</span>
+    </div>`).join("");
+
+  // ── #9: Game length distribution ──────────────────────────────────────────
+  const glHist = result.gameLengthHistogram;
+  const glMax = Math.max(...glHist.counts, 1);
+  const gameLenBars = glHist.counts.map((c,i)=>`
+    <div class="sim-hist-col">
+      <div class="sim-hist-bar sim-gl-bar" style="height:${(c/glMax*80)}px" title="${glHist.labels[i]} rounds: ${c} games"></div>
+      <span class="sim-hist-label">${glHist.labels[i].split("–")[0]}</span>
+    </div>`).join("");
+
+  // ── #10: Strategy interaction matrix ─────────────────────────────────────
+  let matrixHtml = "";
+  if(result.matrix){
+    matrixHtml = `<h3>Strategy Head-to-Head (1v1)</h3>
+      <p class="small">Each strategy played alone against each other strategy across 500 games. This shows raw matchup strength without third-party interference.</p>
+      <table class="sim-matrix-table"><thead><tr><th></th>`;
+    strategies.forEach(s=>{ matrixHtml += `<th>${names[s]}</th>`; });
+    matrixHtml += `</tr></thead><tbody>`;
+
+    strategies.forEach(rowStrat=>{
+      matrixHtml += `<tr><td><b>${names[rowStrat]}</b></td>`;
+      strategies.forEach(colStrat=>{
+        if(rowStrat===colStrat){
+          matrixHtml += `<td class="sim-matrix-diag">—</td>`;
+        } else {
+          // Look up the matchup
+          const key1 = `${rowStrat}_vs_${colStrat}`;
+          const key2 = `${colStrat}_vs_${rowStrat}`;
+          const m = result.matrix[key1] || result.matrix[key2];
+          if(!m){ matrixHtml += `<td>—</td>`; }
+          else {
+            const rowWin = m[rowStrat];
+            const cls = rowWin>52?"sim-matrix-win":rowWin<48?"sim-matrix-loss":"sim-matrix-even";
+            matrixHtml += `<td class="${cls}"><b>${rowWin.toFixed(1)}%</b></td>`;
+          }
+        }
+      });
+      matrixHtml += `</tr>`;
+    });
+    matrixHtml += `</tbody></table>
+      <p class="small">Read as: row strategy's win rate against column strategy. Above 50% = row wins more often.</p>`;
+  }
+
+  // Assemble full results HTML
+  document.getElementById("simResultsArea").innerHTML = `
+    <h3>1. Win Rates</h3>
+    <p class="small">How often each strategy won the game across ${result.gamesRun.toLocaleString()} games.</p>
+    <div class="sim-chart">${winRatesChart}</div>
+
+    <h3>2. Bust Rate (per round)</h3>
+    <p class="small">% of rounds where the strategy busted. Lower = safer play, but may leave points behind.</p>
+    <div class="sim-chart">${bustChart}</div>
+
+    <h3>3. Average Score per Surviving Round</h3>
+    <p class="small">When the strategy didn't bust, how many points did it typically earn?</p>
+    <div class="sim-chart">${survivingChart}</div>
+
+    <h3>4. Flip 7 Achievement Rate</h3>
+    <p class="small">% of rounds where the strategy actually pulled off a Flip 7 (the +15 bonus).</p>
+    <div class="sim-chart">${flip7Chart}</div>
+
+    <h3>5. Conditional Hit Rates — When Does the Strategy Press On?</h3>
+    <p class="small">Given the player holds N unique numbers, how often does each strategy hit? Green = press on, red = stay. The transition reveals the optimal stopping point.</p>
+    <div class="sim-cond-wrap">${condTable}</div>
+
+    <h3>6. Average Winning Round Score</h3>
+    <p class="small">When this strategy wins a round, how many points did it typically score?</p>
+    <div class="sim-chart">${winScoreChart}</div>
+
+    <h3>7. Action Card Impact — Was the Winner Targeted?</h3>
+    <p class="small">% of game-winning rounds where the eventual winner was targeted by an opponent's action card. High = action cards are kingmakers.</p>
+    <div class="sim-chart">${targetedChart}</div>
+
+    <h3>8. Stay-Too-Early Gap</h3>
+    <p class="small">When the strategy stayed but didn't win the round, how many points did they leave behind? Lower = closer to optimal stopping.</p>
+    <div class="sim-chart">${gapChart}</div>
+
+    <h3>9. Score Variance (Boom-or-Bust)</h3>
+    <p class="small">Standard deviation of round scores. Higher = more volatile (big wins, big zeros). Lower = consistent steady scoring.</p>
+    <div class="sim-chart">${stdDevChart}</div>
+
+    <h3>10. Adaptive's Stay Distribution</h3>
+    <p class="small">Score values at which Adaptive players decided to stay. The shape of this histogram suggests the optimal stay window for this game configuration.</p>
+    <div class="sim-histogram">${histBars}</div>
+
+    <h3>Game Length Distribution</h3>
+    <p class="small">How many rounds did games take to finish? Shorter = aggressive metas, longer = grinding.</p>
+    <div class="sim-histogram">${gameLenBars}</div>
+    <p class="small">Average game length: <b>${result.avgGameLength.toFixed(1)} rounds</b></p>
+
+    ${matrixHtml}
+
+    <h3>Conclusions</h3>
+    <div class="sim-conclusions">${result.conclusions.map(c=>`<p>${c}</p>`).join("")}</div>
+
+    <button class="blue" onclick="startSimulation()" style="margin-top:12px;width:100%">Run Again</button>
+  `;
 }
 
 // ─── Swipe to close zoom ──────────────────────────────────────────────────────

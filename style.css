@@ -806,3 +806,79 @@ body.true-mcts-mode #mctsWorkerStatus:empty::before {
   background: #2a303d;
   border-radius: 8px;
 }
+
+/* ─── Simulator: Conditional hit-rate table ──────────────────────────────── */
+.sim-cond-wrap {
+  overflow-x: auto;
+  margin: 8px 0 16px;
+}
+.sim-cond-table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 4px;
+  font-size: 13px;
+  text-align: center;
+}
+.sim-cond-table th {
+  background: #1b202b;
+  color: var(--muted);
+  padding: 6px 8px;
+  font-weight: 700;
+  border-radius: 6px;
+  font-size: 12px;
+}
+.sim-cond-table td {
+  background: #171c2a;
+  padding: 8px 6px;
+  border-radius: 6px;
+  color: white;
+  min-width: 60px;
+}
+.sim-cond-hot  { background: #1d4f2c !important; color: #a8f0be !important; }
+.sim-cond-mid  { background: #4f4220 !important; color: #f0d6a8 !important; }
+.sim-cond-cold { background: #4f1d24 !important; color: #f0a8b3 !important; }
+.sim-cond-na   { color: var(--muted) !important; }
+
+/* ─── Simulator: Game-length histogram ───────────────────────────────────── */
+.sim-gl-bar {
+  background: #6b8edb !important;
+}
+
+/* ─── Simulator: Strategy interaction matrix ─────────────────────────────── */
+.sim-matrix-table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 4px;
+  font-size: 13px;
+  text-align: center;
+  margin: 8px 0;
+}
+.sim-matrix-table th {
+  background: #1b202b;
+  color: var(--muted);
+  padding: 6px 8px;
+  font-weight: 700;
+  font-size: 12px;
+  border-radius: 6px;
+}
+.sim-matrix-table td {
+  background: #171c2a;
+  padding: 10px 6px;
+  border-radius: 6px;
+  color: white;
+}
+.sim-matrix-diag { background: #0f1219 !important; color: var(--muted) !important; }
+.sim-matrix-win  { background: #1d4f2c !important; color: #a8f0be !important; }
+.sim-matrix-loss { background: #4f1d24 !important; color: #f0a8b3 !important; }
+.sim-matrix-even { background: #2f3242 !important; color: var(--muted) !important; }
+
+/* ─── Tighter section spacing for the longer results page ───────────────── */
+#simResultsArea h3 {
+  margin-top: 22px;
+  margin-bottom: 4px;
+  font-size: 16px;
+}
+#simResultsArea h3:first-child { margin-top: 0; }
+#simResultsArea p.small {
+  margin: 0 0 8px;
+}
