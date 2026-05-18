@@ -789,12 +789,10 @@ function renderCardGrid(elId,clickable){
           applyForcedDraw(card);
           return;
         }
-        // In tracker mode, manual card entries do NOT auto-advance to the next
-        // player. The user is recording cards for the active player who is still
-        // taking their turn. Only Stay/bust/Flip 7 advances the turn.
-        // In digital mode, the dealer button (Hit) handles the draw + advance.
-        const shouldAdvance = mode() !== "tracker";
-        receiveCard(active, card, {advance: shouldAdvance});
+        // Turns alternate one card at a time per the rules: each player takes
+        // exactly ONE card on their turn, then the next player goes. So both
+        // tracker and digital modes advance after the active player's card.
+        receiveCard(active, card, {advance: true});
       };
       b.ondblclick=e=>{e.preventDefault();openCardZoom(card);};
     }
