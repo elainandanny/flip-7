@@ -202,7 +202,7 @@ function policyMove(sim, deck, idx, rootIndex){
   return "STAY";
 }
 
-function applyCard(sim, deck, idx, card){
+function applyCard(sim, deck, idx, card, opts){
   const p = sim.players[idx];
   if(!p || p.busted || p.stayed) return "none";
   if(wouldBust(sim.version, p.hand, card)){
@@ -217,7 +217,12 @@ function applyCard(sim, deck, idx, card){
   p.hand.push(card);
   if(sim.version==="vengeance" && card==="Unlucky 7") p.hand=cleanUnlucky(p.hand);
   if(uniqueCount(sim.version, p.hand)>=7) return "flip7";
-  if(isAction(sim.version, card)) resolveActionApprox(sim, deck, idx, card);
+  // Per official rules, action cards drawn inside a Flip Four/Three are buffered
+  // and only resolved if the sequence completes without bust. Caller passes
+  // {suppressAction:true} to defer resolution.
+  if(isAction(sim.version, card) && !(opts && opts.suppressAction)){
+    resolveActionApprox(sim, deck, idx, card);
+  }
   return "safe";
 }
 
@@ -243,11 +248,23 @@ function resolveActionApprox(sim, deck, owner, card){
     const target=chooseHighestHand(sim.version, alive);
     const max=card==="Flip Four"?4:3;
     if(target){
+      // Per official rules: buffer action cards; only resolve if target survives.
+      const buffered=[];
+      let busted=false, flipped=false;
       for(let i=0;i<max;i++){
         if(target.p.busted||uniqueCount(sim.version,target.p.hand)>=7) break;
         const c=draw(deck, sim); if(!c) break;
-        const outcome=applyCard(sim,deck,target.i,c);
-        if(outcome==="bust"||outcome==="flip7") break;
+        const outcome=applyCard(sim,deck,target.i,c,{suppressAction:true});
+        if(outcome==="bust"){ busted=true; break; }
+        if(outcome==="flip7"){ flipped=true; break; }
+        if(isAction(sim.version,c)) buffered.push(c);
+      }
+      // Resolve buffered action cards in draw order — only if no bust/flip7
+      if(!busted && !flipped){
+        for(const c of buffered){
+          if(target.p.busted) break;
+          resolveActionApprox(sim, deck, target.i, c);
+        }
       }
     }
     removeOne(actor.hand,card); return;

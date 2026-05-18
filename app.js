@@ -880,14 +880,68 @@ function justOneMore(target){
   }
   toast("Tracker: enter the forced card, then mark stayed.","info"); discardActionCard(so,sc);if(openNextPendingAction()) return;nextTurn();update();
 }
-function multiDraw(target,n){
+function multiDraw(target, n){
   if(!canResolvePendingAction()){toast("Only the action owner can resolve.","warn");return;}
-  closeActionModal(); const so=pending?pending.owner:active,sc=pending?pending.card:null;pending=null;
+  closeActionModal();
+  const so = pending ? pending.owner : active;
+  const sc = pending ? pending.card  : null;
+  pending = null;
+
   if(mode()==="digital"){
-    for(let i=0;i<n;i++){ if(players[target].busted||hasFlip7(players[target])) break; const c=drawRandomCard();if(!c) break; log(`${players[target].name} forced draw ${i+1}/${n}: ${c}.`);invalidateDeckCache();receiveCard(target,c,{advance:false,suppressAction:true});if(isAction(c)&&!players[target].busted&&!hasFlip7(players[target])) enqueuePendingAction({card:c,owner:target,after:false}); if(players[target].busted||hasFlip7(players[target])) break; }
-    if(sc) discardActionCard(so,sc); if(players[target].busted||hasFlip7(players[target])){nextTurn();update();return;} if(openNextPendingAction()) return;nextTurn();update();return;
+    // Per official rules: any action cards drawn during a Flip Four/Three are
+    // ONLY resolved if the target makes it through the sequence without busting.
+    // If the target busts, those action cards are discarded along with the bust.
+    // We collect them locally and enqueue only at the end if no bust occurred.
+    const localActionCards = [];
+
+    for(let i=0; i<n; i++){
+      if(players[target].busted || hasFlip7(players[target])) break;
+      const c = drawRandomCard();
+      if(!c) break;
+      log(`${players[target].name} forced draw ${i+1}/${n}: ${c}.`);
+      invalidateDeckCache();
+      receiveCard(target, c, {advance:false, suppressAction:true});
+
+      // Buffer action cards locally instead of enqueueing immediately.
+      // Per rules: only resolved if the player survives the whole sequence.
+      if(isAction(c) && !players[target].busted && !hasFlip7(players[target])){
+        localActionCards.push(c);
+      }
+      if(players[target].busted || hasFlip7(players[target])) break;
+    }
+
+    if(sc) discardActionCard(so, sc);
+
+    // Apply official ruling on the local buffer
+    if(players[target].busted){
+      // Bust → all action cards drawn during the sequence are discarded
+      localActionCards.forEach(c => {
+        // The card was added to target.bustedHand by bustPlayer; it'll be
+        // discarded with the rest at round end. No additional action needed.
+        log(`${c} discarded — drawn during a bust.`);
+      });
+      nextTurn(); update(); return;
+    }
+
+    if(hasFlip7(players[target])){
+      // Flip 7 ends the round immediately; round-end clears pending actions
+      nextTurn(); update(); return;
+    }
+
+    // Target survived → enqueue any action cards drawn for normal resolution
+    localActionCards.forEach(c => {
+      enqueuePendingAction({card:c, owner:target, after:false});
+    });
+
+    if(openNextPendingAction()) return;
+    nextTurn(); update();
+    return;
   }
-  toast(`Tracker: enter up to ${n} cards for ${players[target].name}.`,"info"); if(sc) discardActionCard(so,sc);if(openNextPendingAction()) return;nextTurn();update();
+
+  toast(`Tracker: enter up to ${n} cards for ${players[target].name}.`, "info");
+  if(sc) discardActionCard(so, sc);
+  if(openNextPendingAction()) return;
+  nextTurn(); update();
 }
 function chooseCard(kind,target){
   const body=document.getElementById("actionBody");
