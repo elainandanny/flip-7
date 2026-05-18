@@ -4,19 +4,32 @@
   <meta charset="UTF-8" />
   <title>Flip 7 Game Advisor</title>
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
+  <meta name="theme-color" content="#101114" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="Flip 7" />
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🃏</text></svg>" />
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
+
+<!-- Toast notification bar -->
+<div id="toastBar" class="toast"></div>
+
 <div class="topbar">
   <div><b>🃏 Flip 7</b> <span class="small" id="topStatus">Setup</span></div>
-  <button class="hamburger" onclick="toggleMenu()">☰</button>
+  <div class="topbar-right">
+    <span class="kbd-hint" title="Keyboard: H=Hit, S=Stay, Esc=Close">H · S · Esc</span>
+    <button class="hamburger" onclick="toggleMenu()">☰</button>
+  </div>
 </div>
+
 <div id="menuBackdrop" class="menu-backdrop" onclick="toggleMenu(false)"></div>
 <div id="menuDrawer" class="menu-drawer">
   <h2>Menu</h2>
   <button onclick="showSetup(); toggleMenu(false)">Setup / New Game</button>
   <div class="compact-actions">
-    <button class="blue" onclick="shuffleDiscardBack(); toggleMenu(false)">Shuffle Discard</button>
+    <button class="blue" onclick="shuffleDiscardConfirm(); toggleMenu(false)">Shuffle Discard</button>
     <button onclick="toggleMenu(false)">Close</button>
   </div>
   <div class="small" style="margin-top:10px">
@@ -29,9 +42,18 @@
     <li>Busted cards stay visible but greyed out until round end.</li>
     <li>If the deck runs out mid-round, shuffle only the discard pile back into the deck.</li>
     <li>In Vengeance, Zero scores 0 unless the player reaches Flip 7.</li>
+    <li>Vengeance modifiers: subtract first, then ÷2.</li>
+    <li>Flip 7 bonus: +15 points (both versions).</li>
     <li>Swap: the action owner swaps one of their cards with one card from another non-busted player.</li>
   </ul>
+  <h2>Keyboard Shortcuts</h2>
+  <ul class="small rules-list">
+    <li><b>H</b> — Hit</li>
+    <li><b>S</b> — Stay</li>
+    <li><b>Esc</b> — Close modal / zoom</li>
+  </ul>
 </div>
+
 <div class="app">
   <div class="left">
     <div id="setupCard" class="setup-card">
@@ -45,25 +67,25 @@
       </select>
 
       <label>Mode</label>
-      <select id="playMode" onchange="update()">
+      <select id="playMode" onchange="update && update()">
         <option value="digital" selected>Play Game</option>
         <option value="tracker">Tracker</option>
       </select>
 
       <label>Show odds/advice in digital play?</label>
-      <select id="showAdviceDigital" onchange="update()">
+      <select id="showAdviceDigital" onchange="update && update()">
         <option value="yes" selected>Show odds and advice</option>
         <option value="no">Hide odds and advice</option>
       </select>
 
       <label>Strategy engine</label>
-      <select id="mctsEnabled" onchange="update()">
+      <select id="mctsEnabled" onchange="update && update()">
         <option value="true" selected>True MCTS on this device</option>
         <option value="false">Fast EV only</option>
       </select>
 
       <label>MCTS speed</label>
-      <select id="mctsBudget" onchange="update()">
+      <select id="mctsBudget" onchange="update && update()">
         <option value="250">Fast, about 250 ms</option>
         <option value="500" selected>Balanced, about 500 ms</option>
         <option value="1000">Deep, about 1 second</option>
@@ -91,7 +113,7 @@ David</textarea>
       <h2>Menu</h2>
       <button onclick="showSetup()">Show Setup / New Game</button>
       <div class="row">
-        <button class="blue" onclick="shuffleDiscardBack()">Shuffle Discard Into Deck</button>
+        <button class="blue" onclick="shuffleDiscardConfirm()">Shuffle Discard Into Deck</button>
       </div>
       <div class="small" style="margin-top:10px">
         Dealer rotates each round. If all players stay or bust, the round ends automatically.
@@ -111,8 +133,8 @@ David</textarea>
       <div id="oddsBox" class="stats"></div>
 
       <div class="compact-actions two-actions">
-        <button class="green" id="hitButton" onclick="hitActive()">HIT</button>
-        <button class="red" onclick="stayActive()">STAY</button>
+        <button class="green action-btn" id="hitButton" onclick="hitActive()">HIT <span class="key-badge">H</span></button>
+        <button class="red action-btn" onclick="stayActive()">STAY <span class="key-badge">S</span></button>
         <button class="purple" id="pendingActionButton" onclick="reopenPendingAction()" style="display:none">Action</button>
       </div>
     </div>
@@ -133,7 +155,6 @@ David</textarea>
     <div class="panel">
       <h2>Cards Remaining in Deck</h2>
       <div id="deckGrid" class="deck-grid"></div>
-
     </div>
 
     <div class="panel">
@@ -148,12 +169,15 @@ David</textarea>
   </div>
 </div>
 
+<!-- Card zoom modal -->
 <div id="cardZoomModal" class="modal" onclick="closeCardZoom()">
   <div class="card-zoom-content" onclick="event.stopPropagation()">
+    <div class="zoom-drag-handle"></div>
     <img id="cardZoomImg" src="" alt="Card preview">
   </div>
 </div>
 
+<!-- Round end modal -->
 <div id="roundMessageModal" class="modal">
   <div class="modal-content">
     <h2 id="roundMessageTitle">Round Over</h2>
@@ -165,6 +189,7 @@ David</textarea>
   </div>
 </div>
 
+<!-- Metric info modal -->
 <div id="metricInfoModal" class="modal" onclick="closeMetricInfo()">
   <div class="modal-content metric-info-card" onclick="event.stopPropagation()">
     <h2 id="metricInfoTitle">Metric</h2>
@@ -175,6 +200,7 @@ David</textarea>
   </div>
 </div>
 
+<!-- Game over modal -->
 <div id="gameOverModal" class="modal">
   <div class="modal-content">
     <h2 id="gameOverTitle">Game Over</h2>
@@ -186,6 +212,7 @@ David</textarea>
   </div>
 </div>
 
+<!-- Action modal -->
 <div id="actionModal" class="modal">
   <div class="modal-content action-modal-content">
     <div class="action-modal-head">
@@ -196,6 +223,19 @@ David</textarea>
     <div class="small" style="margin-top:10px">You may close this panel to review player hands, then reopen the pending action from the top controls.</div>
   </div>
 </div>
+
+<!-- Generic confirm modal (replaces browser confirm()) -->
+<div id="confirmModal" class="modal">
+  <div class="modal-content confirm-modal-content">
+    <h2 id="confirmModalTitle">Confirm</h2>
+    <div id="confirmModalBody" class="display" style="margin:10px 0"></div>
+    <div class="compact-actions">
+      <button class="green" id="confirmModalOk">Confirm</button>
+      <button id="confirmModalCancel">Cancel</button>
+    </div>
+  </div>
+</div>
+
 <script src="app.js" defer></script>
 </body>
 </html>
