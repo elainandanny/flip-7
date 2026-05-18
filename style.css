@@ -726,3 +726,83 @@ body.true-mcts-mode #mctsWorkerStatus:empty::before {
   color: #dfe5f4;
 }
 .sim-conclusions p:last-child { margin-bottom: 0; }
+
+/* ─── Action advice detail line ──────────────────────────────────────────── */
+.action-advice-label-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.action-advice-detail {
+  font-size: 11px;
+  color: var(--muted);
+}
+.action-advice-best .action-advice-detail {
+  color: #a8f0be;
+}
+/* Give label-wrap column the space it needs */
+.action-advice-row {
+  grid-template-columns: 20px 1fr auto;
+}
+
+/* ─── Simulator strategy panels ──────────────────────────────────────────── */
+.sim-strat-panel { margin-top: 0; }
+.sim-strat-aggressive  { border-left: 3px solid #bc2634; }
+.sim-strat-conservative{ border-left: 3px solid #1f5fbf; }
+
+.sim-slider {
+  width: 100%;
+  margin: 6px 0 2px;
+  accent-color: var(--purple2);
+  height: 6px;
+  cursor: pointer;
+  background: transparent;
+  border: none;
+  border-radius: 0;
+  padding: 0;
+}
+
+.sim-param-value {
+  float: right;
+  font-weight: 900;
+  color: white;
+  font-size: 13px;
+}
+
+.sim-toggle-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 6px 0 10px;
+}
+.sim-checkbox {
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+  cursor: pointer;
+  accent-color: var(--purple2);
+  border: none;
+  padding: 0;
+}
+.sim-toggle-label {
+  display: inline;
+  font-size: 14px;
+  color: #dfe5f4;
+  margin: 0;
+  cursor: pointer;
+}
+
+.sim-presets {
+  display: flex;
+  gap: 6px;
+  margin-top: 6px;
+}
+.sim-preset-btn {
+  flex: 1;
+  padding: 6px 4px;
+  font-size: 13px;
+  font-weight: 700;
+  background: #2a303d;
+  border-radius: 8px;
+}

@@ -71,8 +71,10 @@ function cleanUnlucky(hand){
   out.push(UNLUCKY7_RESOLVED_MARKER); return out;
 }
 function scoreHand(ver,cards){
-  let hand=visibleCards(cards);
-  if(ver==="vengeance") hand=cleanUnlucky(hand);
+  let hand = ver==="vengeance"
+    ? cleanUnlucky(cards || [])
+    : visibleCards(cards);
+  hand = visibleCards(hand);
   const nums=hand.filter(c=>isNumeric(ver,c));
   const unique=uniqueNums(ver,hand);
   let total=nums.reduce((s,c)=>s+cVal(ver,c),0);
@@ -102,27 +104,41 @@ function draw(deck){
 // ─── Strategy decision functions ──────────────────────────────────────────────
 // Returns true = HIT, false = STAY
 
-function decideAggressive(ver, hand, deck){
-  // Hit until bust chance exceeds 40% or has Flip 7
+function decideAggressive(ver, hand, deck, playerScore, leaderScore, cfg){
+  const bustThreshold = cfg?.bustThreshold ?? 0.40;
+  const chaseFlip7   = cfg?.chaseFlip7    ?? true;
+  const trailingBoost= cfg?.trailingBoost ?? 0;     // extra bust% tolerance when trailing
+
   if(hand.length===0) return true;
   if(ver==="vengeance"&&hand.includes("Zero")&&uniqueNums(ver,hand)<7) return true;
+  if(chaseFlip7 && uniqueNums(ver,hand)>=6) return true;
+
   const total=Object.values(deck).reduce((a,b)=>a+b,0);
   if(total<=0) return false;
   let bustCards=0;
   for(const [c,n] of Object.entries(deck)){ if(n>0&&wouldBust(ver,hand,c)) bustCards+=n; }
-  return (bustCards/total) < 0.40;
+  const bust = bustCards/total;
+  const behind = Math.max(0, leaderScore - playerScore);
+  const adjustedThreshold = bustThreshold + (behind > 30 ? trailingBoost/100 : 0);
+  return bust < adjustedThreshold;
 }
 
-function decideConservative(ver, hand, deck){
-  // Stay once score >= 20, unless Zero is active or hand is empty
+function decideConservative(ver, hand, deck, playerScore, leaderScore, cfg){
+  const stayScore   = cfg?.stayScore    ?? 20;
+  const chaseFlip7  = cfg?.chaseFlip7   ?? false;
+  const leadingPenalty = cfg?.leadingPenalty ?? 0; // reduce stay threshold when leading
+
   if(hand.length===0) return true;
   if(ver==="vengeance"&&hand.includes("Zero")&&uniqueNums(ver,hand)<7) return true;
-  if(uniqueNums(ver,hand)>=6) return true;
-  return scoreHand(ver,hand) < 20;
+  if(chaseFlip7 && uniqueNums(ver,hand)>=6) return true;
+
+  const isLeading = playerScore >= leaderScore;
+  const threshold = stayScore - (isLeading ? leadingPenalty : 0);
+  return scoreHand(ver,hand) < threshold;
 }
 
-function decideAdaptive(ver, hand, deck, score, leaderScore){
-  // MCTS-style heuristic with opponent awareness
+function decideAdaptive(ver, hand, deck, playerScore, leaderScore){
+  // MCTS-style heuristic with opponent awareness — not user-configurable
   if(hand.length===0) return true;
   if(ver==="vengeance"&&hand.includes("Zero")&&uniqueNums(ver,hand)<7) return true;
   if(uniqueNums(ver,hand)>=6) return true;
@@ -131,13 +147,13 @@ function decideAdaptive(ver, hand, deck, score, leaderScore){
   let bustCards=0;
   for(const [c,n] of Object.entries(deck)){ if(n>0&&wouldBust(ver,hand,c)) bustCards+=n; }
   const bust=bustCards/total;
-  const behind=Math.max(0,leaderScore-score);
+  const behind=Math.max(0,leaderScore-playerScore);
   let threshold=22;
   if(behind>40) threshold+=10;
-  if(score>=leaderScore) threshold-=4;
-  if(score<threshold&&bust<0.30) return true;
-  if(score<threshold+15&&bust<0.15) return true;
-  if(bust<0.07&&score<50) return true;
+  if(playerScore>=leaderScore) threshold-=4;
+  if(playerScore<threshold&&bust<0.30) return true;
+  if(playerScore<threshold+15&&bust<0.15) return true;
+  if(bust<0.07&&playerScore<50) return true;
   return false;
 }
 
@@ -206,7 +222,7 @@ function resolveAction(ver, players, actorIdx, card, deck){
 }
 
 // ─── Play one full game ───────────────────────────────────────────────────────
-function playGame(ver, playerCount, targetScore, strategies){
+function playGame(ver, playerCount, targetScore, strategies, stratConfig){
   const players=strategies.map((s,i)=>({name:`P${i}`,strategy:s,hand:[],bustedHand:[],stayed:false,busted:false,score:0}));
   let dealer=0, roundNum=0;
   const stayScores=[]; // record score at which each player stayed (per round)
@@ -224,8 +240,8 @@ function playGame(ver, playerCount, targetScore, strategies){
       if(!p.stayed&&!p.busted){
         const leaderScore=Math.max(...players.map(x=>x.score));
         let shouldHit;
-        if(p.strategy==="aggressive") shouldHit=decideAggressive(ver,p.hand,deck);
-        else if(p.strategy==="conservative") shouldHit=decideConservative(ver,p.hand,deck);
+        if(p.strategy==="aggressive") shouldHit=decideAggressive(ver,p.hand,deck,p.score,leaderScore,stratConfig?.aggressive);
+        else if(p.strategy==="conservative") shouldHit=decideConservative(ver,p.hand,deck,p.score,leaderScore,stratConfig?.conservative);
         else shouldHit=decideAdaptive(ver,p.hand,deck,p.score,leaderScore);
 
         if(shouldHit){
@@ -275,7 +291,7 @@ function playGame(ver, playerCount, targetScore, strategies){
 // ─── Main message handler ─────────────────────────────────────────────────────
 self.onmessage = event => {
   const {jobId, config} = event.data;
-  const {version, playerCount, targetScore, totalGames} = config;
+  const {version, playerCount, targetScore, totalGames, stratConfig} = config;
 
   // Build strategy assignments: round-robin so each strategy gets equal representation
   const strategyNames=["aggressive","conservative","adaptive"];
@@ -306,7 +322,7 @@ self.onmessage = event => {
 
   function runBatch(n){
     for(let g=0;g<n&&gamesRun<totalGames;g++, gamesRun++){
-      const result=playGame(version, playerCount, targetScore, strategies);
+      const result=playGame(version, playerCount, targetScore, strategies, stratConfig);
 
       // A strategy "wins" if at least one winner used that strategy
       const winSet=new Set(result.winners);

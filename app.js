@@ -157,8 +157,13 @@ function cleanVengeanceHand(cards){
 
 // ─── Score ────────────────────────────────────────────────────────────────────
 function score(cards){
-  let hand=visibleCards(cards);
-  if(version()==="vengeance") hand=cleanVengeanceHand(hand).hand;
+  // IMPORTANT: do NOT call visibleCards() before cleanVengeanceHand().
+  // The UNLUCKY7_RESOLVED_MARKER must be present so cleanVengeanceHand knows
+  // the reset already happened and must NOT strip post-Unlucky-7 cards again.
+  let hand = version()==="vengeance"
+    ? cleanVengeanceHand(cards || []).hand   // marker preserved → post-U7 cards safe
+    : visibleCards(cards);                    // classic: strip markers normally
+  hand = visibleCards(hand);                  // now strip marker for scoring math
   const nums=hand.filter(isNumber); const unique=new Set(nums.map(cardId)).size;
   let total=nums.map(cardVal).reduce((a,b)=>a+b,0);
   if(version()==="classic"){ let bonus=0,mult=1; hand.forEach(c=>{if(c.startsWith("+")) bonus+=Number(c.slice(1)); if(c==="x2") mult*=2;}); total=total*mult+bonus; }
@@ -176,8 +181,8 @@ function wouldBust(hand,card){
 // ─── Deck operations ──────────────────────────────────────────────────────────
 function remainingTotal(){ return Object.values(getDeck()).reduce((a,b)=>a+b,0); }
 function drawRandomCard(){
-  let deck=getDeck(); let total=Object.values(deck).reduce((a,b)=>a+b,0);
-  if(total<=0&&discard.length>0){shuffleDiscardBack(false);invalidateDeckCache();deck=getDeck();total=Object.values(deck).reduce((a,b)=>a+b,0);}
+  const deck=getDeck();
+  let total=Object.values(deck).reduce((a,b)=>a+b,0);
   if(total<=0) return null;
   let r=Math.floor(Math.random()*total);
   for(const [card,count] of Object.entries(deck)){if(r<count) return card; r-=count;}
@@ -197,11 +202,7 @@ function startGame(){
   log(`Round ${round} started. ${players[dealer].name} deals.`,true); update();
 }
 
-function shuffleDiscardBack(show=true){ discard=[]; invalidateDeckCache(); if(show) log("Discard shuffled back.",true); update(); }
-function shuffleDiscardConfirm(){
-  if(!discard.length){toast("Discard pile is already empty.","info");return;}
-  showConfirmModal("Shuffle Discard?",`Move all <b>${discard.length}</b> card(s) back into the deck?`,()=>shuffleDiscardBack(true));
-}
+// shuffleDiscardBack removed — feature removed per user request
 
 // ─── Turns ────────────────────────────────────────────────────────────────────
 function hitActive(){
@@ -275,6 +276,9 @@ function showRoundEndPrompt(message){ pendingRoundEnd=true; document.getElementB
 function confirmRoundEnd(){ document.getElementById("roundMessageModal").style.display="none"; pendingRoundEnd=null; endRound(); }
 function endRound(){
   if(!players.length||gameOver) return;
+  // Clear ALL pending actions — round end cancels any in-flight Flip 4/3, Just One More, etc.
+  clearPendingActions();
+  closeActionModal();
   players.forEach(p=>{ if(!p.busted) p.score+=score(p.hand); discard.push(...visibleCards(p.hand),...visibleCards(p.bustedHand)); p.hand=[]; p.bustedHand=[]; p.busted=false; p.stayed=false; });
   invalidateDeckCache(); if(checkGameOver()) return;
   dealer=(dealer+1)%players.length; active=dealer; round++;
@@ -394,31 +398,203 @@ function buildPostActionState(card,owner,targetIdx,cardIdx){
   return {version:version(),targetScore,active:owner,dealer,round,discard:[...discard],players:simPlayers};
 }
 
-function generateActionAdvice(card,owner,targets,callback){
-  const options=[];
-  if(card==="Steal"||card==="Discard"){
+// ─── Action card MCTS advice — smart logical ranking ─────────────────────────
+// Negative-value cards: stealing/discarding these helps the opponent or hurts us
+const NEGATIVE_CARDS = new Set(["-2","-4","-6","-8","-10","÷2","Zero"]);
+
+function isNegativeCard(card){
+  return NEGATIVE_CARDS.has(card);
+}
+
+// Would taking `card` into `hand` cause a bust? (duplicate number check)
+function wouldTakingCauseBust(ownerHand, card){
+  if(!isNumber(card)) return false;
+  return ownerHand.filter(isNumber).map(cardId).includes(cardId(card));
+}
+
+// Score delta if we steal `card` into ownerHand
+function stealScoreDelta(ownerHand, card){
+  if(wouldTakingCauseBust(ownerHand, card)) return -9999; // illegal
+  if(isNegativeCard(card)) return -9999; // never steal negative cards
+  const before = score(ownerHand);
+  const after  = score([...ownerHand, card]);
+  return after - before;
+}
+
+// Score delta if we discard `card` from targetHand
+function discardScoreDelta(targetHand, card){
+  if(isNegativeCard(card)) return -9999; // discarding negatives helps them — skip
+  const before = score(targetHand);
+  const after  = score(targetHand.filter((_,i)=>targetHand.indexOf(card)!==i||true).filter((c,i,arr)=>{ const fi=arr.indexOf(card); return i!==fi||fi===-1; }));
+  // Simpler: score without the first occurrence of card
+  const idx = targetHand.indexOf(card);
+  if(idx<0) return 0;
+  const newHand = [...targetHand]; newHand.splice(idx,1);
+  return before - score(newHand); // how much we reduce their score
+}
+
+// All valid swap pairs: my card X ↔ their card Y
+// Filters: no bust for either side, no swapping in negative cards to self
+function buildSwapOptions(ownerIdx, targets){
+  const owner = players[ownerIdx];
+  const options = [];
+  targets.forEach(({p,i})=>{
+    owner.hand.forEach((myCard, mi)=>{
+      if(!isPlayableCardTarget(myCard)) return;
+      p.hand.forEach((theirCard, ti)=>{
+        if(!isPlayableCardTarget(theirCard)) return;
+        // Would owner bust receiving theirCard?
+        const ownerWithout = owner.hand.filter((_,k)=>k!==mi);
+        if(wouldTakingCauseBust(ownerWithout, theirCard)) return;
+        // Would target bust receiving myCard?
+        const targetWithout = p.hand.filter((_,k)=>k!==ti);
+        if(wouldTakingCauseBust(targetWithout, myCard)) return;
+        // Don't swap in a negative card to ourselves
+        if(isNegativeCard(theirCard)) return;
+
+        const ownerBefore = score(owner.hand);
+        const targetBefore = score(p.hand);
+        const ownerAfter = score([...ownerWithout, theirCard]);
+        const targetAfter = score([...targetWithout, myCard]);
+        const myGain = ownerAfter - ownerBefore;
+        const theirLoss = targetBefore - targetAfter;
+        const combined = myGain + theirLoss;
+
+        options.push({
+          label:`Swap your <b>${myCard}</b> for <b>${p.name}</b>'s <b>${theirCard}</b>`,
+          detail:`You: ${myGain>=0?"+":""}${myGain} pts · ${p.name}: ${-theirLoss>=0?"+":""}${-theirLoss} pts`,
+          targetName: p.name, targetIdx: i,
+          myCard, theirCard, myIdx: mi, theirIdx: ti,
+          combined, myGain, theirLoss,
+          state: buildSwapPostState(ownerIdx, i, mi, ti)
+        });
+      });
+    });
+  });
+  return options;
+}
+
+function buildSwapPostState(ownerIdx, targetIdx, myCardIdx, theirCardIdx){
+  const simPlayers = players.map(p=>({name:p.name,hand:[...p.hand],bustedHand:[...p.bustedHand],stayed:p.stayed,busted:p.busted,score:p.score}));
+  const tmp = simPlayers[ownerIdx].hand[myCardIdx];
+  simPlayers[ownerIdx].hand[myCardIdx] = simPlayers[targetIdx].hand[theirCardIdx];
+  simPlayers[targetIdx].hand[theirCardIdx] = tmp;
+  return {version:version(),targetScore,active:ownerIdx,dealer,round,discard:[...discard],players:simPlayers};
+}
+
+function generateActionAdvice(card, owner, targets, callback){
+  const ownerHand = players[owner].hand;
+
+  // ── Swap: pure score-delta ranking, no MCTS rollout needed ──────────────────
+  if(card==="Swap"){
+    const opts = buildSwapOptions(owner, targets);
+    if(!opts.length){ callback(null); return; }
+    opts.sort((a,b)=>b.combined-a.combined);
+    opts[0].recommended = true;
+    // Still run MCTS on top 3 to get win% for display
+    const top = opts.slice(0,5);
+    let done=0;
+    top.forEach((opt,idx)=>{
+      runAdviceRollout(opt.state, result=>{
+        top[idx].winPct = result ? result.hitWinChance : 0;
+        top[idx].stayPct = result ? result.stayWinChance : 0;
+        done++;
+        if(done===top.length){
+          // Re-rank: use combined score delta as primary, win% as tiebreak
+          top.sort((a,b)=>{
+            const allZero = top.every(x=>x.winPct===0);
+            if(!allZero && Math.abs(a.winPct-b.winPct)>1) return b.winPct-a.winPct;
+            return b.combined-a.combined;
+          });
+          top[0].recommended = true;
+          callback(top);
+        }
+      });
+    });
+    return;
+  }
+
+  // ── Steal: filter illegal/negative options, rank by score delta then win% ───
+  if(card==="Steal"){
+    const options=[];
     targets.forEach(({p,i})=>{
       p.hand.forEach((handCard,ci)=>{
         if(!isPlayableCardTarget(handCard)) return;
-        const verb=card==="Steal"?"Steal":"Discard";
-        options.push({label:`${verb} <b>${handCard}</b> from <b>${p.name}</b>`,state:buildPostActionState(card,owner,i,ci)});
+        if(isNegativeCard(handCard)) return;           // never steal negatives
+        if(wouldTakingCauseBust(ownerHand, handCard)) return; // would bust us
+        const delta = stealScoreDelta(ownerHand, handCard);
+        if(delta<=-9999) return;
+        options.push({
+          label:`Steal <b>${handCard}</b> from <b>${p.name}</b>`,
+          detail:`+${delta} pts for you`,
+          delta, targetIdx:i, cardIdx:ci,
+          state: buildPostActionState("Steal",owner,i,ci)
+        });
       });
     });
-  } else if(["Just One More","Flip Four","Flip Three","Swap"].includes(card)){
-    targets.forEach(({p,i})=>{
-      options.push({label:`Target <b>${p.name}</b> (round score: ${score(p.hand)})`,state:buildPostActionState(card,owner,i,null)});
-    });
+    if(!options.length){ callback(null); return; }
+    options.sort((a,b)=>b.delta-a.delta);
+    resolveWithMcts(options, callback, r=>r.delta);
+    return;
   }
-  if(!options.length){callback(null);return;}
 
-  let done=0; const results=options.map(()=>null);
-  options.forEach((opt,idx)=>{
-    runAdviceRollout(opt.state,result=>{
-      results[idx]=result?{label:opt.label,winPct:result.hitWinChance,stayPct:result.stayWinChance}:{label:opt.label,winPct:0,stayPct:0};
-      done++; if(done===options.length){
-        const valid=results.filter(Boolean).sort((a,b)=>b.winPct-a.winPct);
-        if(valid.length) valid[0].recommended=true;
-        callback(valid);
+  // ── Discard: rank by how much it reduces the target's score ─────────────────
+  if(card==="Discard"){
+    const options=[];
+    targets.forEach(({p,i})=>{
+      p.hand.forEach((handCard,ci)=>{
+        if(!isPlayableCardTarget(handCard)) return;
+        if(isNegativeCard(handCard)) return; // discarding negatives helps them
+        const delta = discardScoreDelta(p.hand, handCard);
+        if(delta<=0) return;
+        options.push({
+          label:`Discard <b>${handCard}</b> from <b>${p.name}</b>`,
+          detail:`−${delta} pts for ${p.name}`,
+          delta, targetIdx:i, cardIdx:ci,
+          state: buildPostActionState("Discard",owner,i,ci)
+        });
+      });
+    });
+    if(!options.length){ callback(null); return; }
+    options.sort((a,b)=>b.delta-a.delta);
+    resolveWithMcts(options, callback, r=>r.delta);
+    return;
+  }
+
+  // ── Just One More / Flip Four / Flip Three: rank by target's round score ────
+  // (highest score target = most dangerous = best to disrupt)
+  if(["Just One More","Flip Four","Flip Three"].includes(card)){
+    const options = targets.map(({p,i})=>({
+      label:`Target <b>${p.name}</b>`,
+      detail:`Round score: ${score(p.hand)}`,
+      delta: score(p.hand),
+      state: buildPostActionState(card,owner,i,null)
+    }));
+    options.sort((a,b)=>b.delta-a.delta);
+    resolveWithMcts(options, callback, r=>r.delta);
+    return;
+  }
+
+  callback(null);
+}
+
+// Run MCTS rollouts on top options, then re-rank using win% (or combined delta fallback)
+function resolveWithMcts(options, callback, fallbackKey){
+  const top = options.slice(0,6);
+  let done=0;
+  top.forEach((opt,idx)=>{
+    runAdviceRollout(opt.state, result=>{
+      top[idx].winPct  = result ? result.hitWinChance  : 0;
+      top[idx].stayPct = result ? result.stayWinChance : 0;
+      done++;
+      if(done===top.length){
+        const allZero = top.every(x=>x.winPct===0);
+        top.sort((a,b)=>{
+          if(!allZero && Math.abs(a.winPct-b.winPct)>0.5) return b.winPct-a.winPct;
+          return fallbackKey(b) - fallbackKey(a);
+        });
+        top[0].recommended = true;
+        callback(top);
       }
     });
   });
@@ -426,16 +602,21 @@ function generateActionAdvice(card,owner,targets,callback){
 
 function renderActionAdviceBanner(advice){
   if(!advice||!advice.length) return "";
-  const rows=advice.map((a,i)=>`
+  const allZero = advice.every(a=>!a.winPct||a.winPct===0);
+  const subtitle = allZero ? "ranked by score impact" : "ranked by win probability";
+  const rows = advice.map((a,i)=>`
     <div class="action-advice-row ${a.recommended?"action-advice-best":""}">
       <span class="action-advice-rank">${a.recommended?"★":"#"+(i+1)}</span>
-      <span class="action-advice-label">${a.label}</span>
-      <span class="action-advice-pct">${a.winPct.toFixed(1)}% win</span>
+      <div class="action-advice-label-wrap">
+        <span class="action-advice-label">${a.label}</span>
+        ${a.detail?`<span class="action-advice-detail">${a.detail}</span>`:""}
+      </div>
+      <span class="action-advice-pct">${a.winPct!=null&&!allZero?a.winPct.toFixed(1)+"% win":a.delta!=null?(a.delta>=0?"+":"")+a.delta+" pts":""}</span>
     </div>`).join("");
   return `<div class="action-advice-box">
-    <div class="action-advice-title">🎯 MCTS Advice <span class="action-advice-sub">— ranked by win probability</span></div>
+    <div class="action-advice-title">🎯 MCTS Advice <span class="action-advice-sub">— ${subtitle}</span></div>
     ${rows}
-    <div class="action-advice-note">Based on 150ms rollout. Final decision is yours.</div>
+    <div class="action-advice-note">Illegal moves filtered. Final decision is yours.</div>
   </div>`;
 }
 
@@ -674,9 +855,21 @@ function getSimWorker(){
 function startSimulation(){
   if(simRunning){toast("Simulation already running.","warn");return;}
   const ver=document.getElementById("simVersion").value;
-  const playerCount=Number(document.getElementById("simPlayerCount").value);
-  const targetSc=Number(document.getElementById("simTargetScore").value);
-  const totalGames=Number(document.getElementById("simGames").value);
+  const playerCount=Math.max(2,Math.min(10,Number(document.getElementById("simPlayerCount").value)||4));
+  const targetSc=Math.max(50,Number(document.getElementById("simTargetScore").value)||200);
+  const totalGames=Math.max(100,Math.min(100000,Number(document.getElementById("simGames").value)||2000));
+  const stratConfig={
+    aggressive:{
+      bustThreshold: Number(document.getElementById("aggrBust").value)/100,
+      chaseFlip7: document.getElementById("aggrFlip7").checked,
+      trailingBoost: Number(document.getElementById("aggrTrailing").value)
+    },
+    conservative:{
+      stayScore: Number(document.getElementById("consScore").value),
+      chaseFlip7: document.getElementById("consFlip7").checked,
+      leadingPenalty: Number(document.getElementById("consLeading").value)
+    }
+  };
   const w=getSimWorker();if(!w) return;
   simRunning=true;simJobId++;
   document.getElementById("simProgressArea").classList.remove("hidden");
@@ -686,7 +879,7 @@ function startSimulation(){
   document.getElementById("simProgressLabel").innerText="Starting…";
   document.getElementById("simLiveRates").innerHTML="";
   document.getElementById("startSimBtn").disabled=true;
-  w.postMessage({jobId:simJobId,config:{version:ver,playerCount,targetScore:targetSc,totalGames}});
+  w.postMessage({jobId:simJobId,config:{version:ver,playerCount,targetScore:targetSc,totalGames,stratConfig}});
 }
 function cancelSimulation(){
   if(!simRunning) return; if(simWorker){simWorker.terminate();simWorker=null;}
@@ -737,7 +930,7 @@ document.addEventListener("keydown",e=>{
 Object.assign(window,{
   openMetricInfo,closeMetricInfo,canResolvePendingAction,toggleInfo,
   updateCornerRecommendation,checkGameOver,closeGameOverModal,startNewGameFromGameOver,
-  startGame,showSetup,hitActive,stayActive,shuffleDiscardBack,shuffleDiscardConfirm,
+  startGame,showSetup,hitActive,stayActive,
   toggleMenu,openCardZoom,closeCardZoom,confirmRoundEnd,justOneMore,multiDraw,
   chooseCard,confirmCardAction,doCardAction,chooseSwapMine,chooseSwapTheirs,
   confirmSwap,doSwap,reopenPendingAction,discardActionAndContinue,openAction,

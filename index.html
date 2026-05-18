@@ -26,10 +26,7 @@
 <div id="menuDrawer" class="menu-drawer">
   <h2>Menu</h2>
   <button onclick="showSetup(); toggleMenu(false)">Setup / New Game</button>
-  <div class="compact-actions">
-    <button class="blue" onclick="shuffleDiscardConfirm(); toggleMenu(false)">Shuffle Discard</button>
-    <button onclick="toggleMenu(false)">Close</button>
-  </div>
+  <button onclick="toggleMenu(false)" style="margin-top:8px">Close</button>
   <div class="small" style="margin-top:10px">
     Stayed players can still be targeted. Busted players stay visible but greyed out until round end.
   </div>
@@ -104,11 +101,9 @@ David</textarea>
       </div>
     </div>
 
-    <!-- In-game side panel: only shuffle discard button -->
+    <!-- In-game side panel: minimal -->
     <div id="gameMenu" class="panel hidden" style="display:none">
-      <div class="row">
-        <button class="blue" onclick="shuffleDiscardConfirm()">Shuffle Discard Into Deck</button>
-      </div>
+      <div class="small">Game in progress.</div>
     </div>
   </div><!-- /left -->
 
@@ -152,7 +147,7 @@ David</textarea>
     <div id="simulatorPanel" class="hidden">
       <div class="panel">
         <h2>🎲 Game Simulator</h2>
-        <p class="small">Run thousands of self-play games to find the best strategy. Three strategies compete: <b>Aggressive</b> (hit until bust% &gt; 40%), <b>Conservative</b> (stay once score ≥ 20), and <b>Adaptive</b> (MCTS-style, adjusts to the game state).</p>
+        <p class="small">Run thousands of self-play games. Three strategies compete: <b>Aggressive</b>, <b>Conservative</b>, and <b>Adaptive</b> (MCTS-style). Customize the first two below.</p>
 
         <label>Game version</label>
         <select id="simVersion">
@@ -161,26 +156,71 @@ David</textarea>
         </select>
 
         <label>Number of players</label>
-        <select id="simPlayerCount">
-          <option value="2">2 players</option>
-          <option value="3">3 players</option>
-          <option value="4" selected>4 players</option>
-          <option value="5">5 players</option>
-          <option value="6">6 players</option>
-        </select>
+        <input id="simPlayerCount" type="number" min="2" max="10" value="4" />
 
         <label>Target score</label>
         <input id="simTargetScore" type="number" min="50" value="200" />
 
-        <label>Number of games to simulate</label>
-        <select id="simGames">
-          <option value="500">500 games (fast, a few seconds)</option>
-          <option value="2000" selected>2,000 games (balanced, ~10s)</option>
-          <option value="10000">10,000 games (deep, ~1 min)</option>
-          <option value="50000">50,000 games (very deep, several minutes)</option>
-        </select>
+        <label>Number of games</label>
+        <input id="simGames" type="number" min="100" max="100000" value="2000" />
+        <div class="sim-presets">
+          <button class="sim-preset-btn" onclick="document.getElementById('simGames').value=500">500</button>
+          <button class="sim-preset-btn" onclick="document.getElementById('simGames').value=2000">2k</button>
+          <button class="sim-preset-btn" onclick="document.getElementById('simGames').value=10000">10k</button>
+          <button class="sim-preset-btn" onclick="document.getElementById('simGames').value=50000">50k</button>
+        </div>
+      </div>
 
-        <div class="row" style="margin-top:12px">
+      <!-- Aggressive strategy config -->
+      <div class="panel sim-strat-panel sim-strat-aggressive">
+        <h3>🔴 Aggressive Strategy</h3>
+        <p class="small">Hits until bust risk exceeds the threshold.</p>
+
+        <label>Bust% threshold — stay if next-card bust chance exceeds this
+          <span class="sim-param-value" id="aggrBustVal">40%</span>
+        </label>
+        <input type="range" id="aggrBust" min="10" max="80" value="40" class="sim-slider"
+          oninput="document.getElementById('aggrBustVal').innerText=this.value+'%'">
+
+        <label>Chase Flip 7 — always hit when holding 6 unique numbers</label>
+        <div class="sim-toggle-row">
+          <input type="checkbox" id="aggrFlip7" checked class="sim-checkbox">
+          <label for="aggrFlip7" class="sim-toggle-label">Chase Flip 7</label>
+        </div>
+
+        <label>Trailing boost — extra bust% tolerance when trailing the leader by &gt;30 pts
+          <span class="sim-param-value" id="aggrTrailingVal">+10%</span>
+        </label>
+        <input type="range" id="aggrTrailing" min="0" max="30" value="10" class="sim-slider"
+          oninput="document.getElementById('aggrTrailingVal').innerText='+'+this.value+'%'">
+      </div>
+
+      <!-- Conservative strategy config -->
+      <div class="panel sim-strat-panel sim-strat-conservative">
+        <h3>🔵 Conservative Strategy</h3>
+        <p class="small">Stays once score reaches the threshold.</p>
+
+        <label>Stay score threshold — stop hitting once score reaches this
+          <span class="sim-param-value" id="consScoreVal">20</span>
+        </label>
+        <input type="range" id="consScore" min="5" max="60" value="20" class="sim-slider"
+          oninput="document.getElementById('consScoreVal').innerText=this.value">
+
+        <label>Chase Flip 7 — always hit when holding 6 unique numbers</label>
+        <div class="sim-toggle-row">
+          <input type="checkbox" id="consFlip7" class="sim-checkbox">
+          <label for="consFlip7" class="sim-toggle-label">Chase Flip 7</label>
+        </div>
+
+        <label>Leading penalty — reduce stay threshold by this when in first place
+          <span class="sim-param-value" id="consLeadingVal">−0</span>
+        </label>
+        <input type="range" id="consLeading" min="0" max="15" value="0" class="sim-slider"
+          oninput="document.getElementById('consLeadingVal').innerText='−'+this.value">
+      </div>
+
+      <div class="panel">
+        <div class="row">
           <button class="green" id="startSimBtn" onclick="startSimulation()">▶ Run Simulation</button>
           <button class="red" onclick="cancelSimulation()">✕ Cancel</button>
         </div>
